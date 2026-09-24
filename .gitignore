@@ -1,0 +1,120 @@
+# ==============================================================================
+# Flutter / Dart
+# ==============================================================================
+.dart_tool/
+**/.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+coverage/
+**/coverage/
+**/doc/api/
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# ==============================================================================
+# Android
+# ==============================================================================
+**/.gradle/
+**/.kotlin/
+**/captures/
+**/local.properties
+**/GeneratedPluginRegistrant.java
+**/.cxx/
+
+# Android build outputs
+android/app/debug
+android/app/profile
+android/app/release
+
+# Keystore & Signing (Never commit private keys or credentials!)
+key.properties
+**/*.keystore
+**/*.jks
+
+# JVM crash logs & replay logs
+hs_err_pid*.log
+replay_pid*.log
+**/hs_err_pid*.log
+**/replay_pid*.log
+
+# ==============================================================================
+# iOS & macOS
+# ==============================================================================
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.framework
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Pods/
+**/.symlinks/
+**/profile_configurations/
+*.ipa
+**/*.xcworkspace/xcuserdata/
+**/xcuserdata/
+
+# ==============================================================================
+# Windows & Linux Desktop
+# ==============================================================================
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+
+# ==============================================================================
+# Python / Lambda
+# ==============================================================================
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# ==============================================================================
+# Vendored Packages (Large Demos & Caches)
+# ==============================================================================
+packages/**/demo/
+packages/**/.gradle/
+packages/**/.dart_tool/
+packages/**/local.properties
+
+# ==============================================================================
+# Environment / Secrets
+# ==============================================================================
+.env
+.env.*
+*.env
+
+# ==============================================================================
+# IDE & Editors
+# ==============================================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+*.bak
+
+# ==============================================================================
+# OS Generated Files
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
