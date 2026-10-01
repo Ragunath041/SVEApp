@@ -316,7 +316,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
-                  child: Image.asset('assets/images/company_logo.webp'),
+                  child: Image.asset('assets/images/company_logo.png'),
                 ),
               ),
 

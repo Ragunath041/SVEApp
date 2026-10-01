@@ -183,13 +183,13 @@ class _FaceGuideAvatarState extends State<FaceGuideAvatar>
                           () {
                             switch (widget.currentStep) {
                               case 7:
-                                return 'assets/images/fullperson.webp';
+                                return 'assets/images/fullperson.png';
                               case 8:
                               case 9:
                               case 10:
-                                return 'assets/images/image.webp';
+                                return 'assets/images/image.png';
                               default:
-                                return 'assets/images/image.webp';
+                                return 'assets/images/image.png';
                             }
                           }(),
                           width: widget.width,

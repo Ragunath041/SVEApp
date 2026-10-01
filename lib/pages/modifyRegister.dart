@@ -263,7 +263,7 @@ class _ModifyRegisterState extends State<ModifyRegister> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.webp',
+                'assets/images/company_logo.png',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,

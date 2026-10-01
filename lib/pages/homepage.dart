@@ -269,7 +269,7 @@ class _HomePageState extends State<HomePage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.webp',
+                'assets/images/company_logo.png',
                 width: 32 * scale,
                 height: 32 * scale,
                 fit: BoxFit.cover,

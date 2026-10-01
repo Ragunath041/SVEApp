@@ -75,9 +75,9 @@ flutter:
 
   assets:
     - assets/models/mobilefacenet.tflite
-    - assets/images/company_logo.webp
-    - assets/images/fullperson.webp
-    - assets/images/image.webp
+    - assets/images/company_logo.png
+    - assets/images/fullperson.png
+    - assets/images/image.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

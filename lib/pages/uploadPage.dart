@@ -114,13 +114,20 @@ class _UploadPageState extends State<UploadPage> {
   Future<void> _fetchSlots() async {
     setState(() => _isLoadingSlots = true);
 
-    final slots = await ExamDetailsService.getQuestionSlots(
+    final rawSlots = await ExamDetailsService.getQuestionSlots(
       fullCourseCode: widget.courseCode,
       date: widget.examDate,
     );
     if (mounted) {
+      List<String> allSlots = ['FrontPage'];
+      for (int i = 0; i < rawSlots.length; i++) {
+        final s = rawSlots[i];
+        if (s.toLowerCase() != 'frontpage') {
+          allSlots.add("Q${i + 1}");
+        }
+      }
       setState(() {
-        _questionSlots = slots;
+        _questionSlots = allSlots;
         _isLoadingSlots = false;
       });
     }
@@ -391,990 +398,512 @@ class _UploadPageState extends State<UploadPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final canLeave = await _handleBackNavigation();
+        if (canLeave && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.asset(
-                'assets/images/company_logo.webp',
-                width: 35,
-                height: 35,
-                fit: BoxFit.cover,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final canLeave = await _handleBackNavigation();
+              if (canLeave && context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          title: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/images/company_logo.png',
+                  width: 35,
+                  height: 35,
+                  fit: BoxFit.cover,
+                ),
               ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Student Details',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                overflow: TextOverflow.ellipsis,
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Student Details',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        child: Container(
-          padding: EdgeInsets.all(12),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Student Name",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    widget.studentName,
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-
-                SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Student ID",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(widget.studentId, style: TextStyle(fontSize: 14)),
-                ),
-
-                SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Centre Name",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    widget.centreName,
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-
-                SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Course Code",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(() {
-                    final code = widget.courseCode;
-                    final zIndex = code.indexOf(RegExp(r'[Zz]'));
-                    if (zIndex > 0 &&
-                        zIndex < code.length &&
-                        code[zIndex - 1] != ' ') {
-                      return '${code.substring(0, zIndex)} ${code.substring(zIndex)}';
-                    }
-                    return code;
-                  }(), style: TextStyle(fontSize: 14)),
-                ),
-
-                SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.center,
-                  child: Text(
-                    "Upload Answer Sheets",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-
-                SizedBox(height: 8),
-
-                // Progress indicator
-                if (_questionSlots.isNotEmpty)
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Color.fromARGB(255, 68, 76, 231).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Color.fromARGB(
-                          255,
-                          68,
-                          76,
-                          231,
-                        ).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.upload_file,
-                          size: 18,
-                          color: Color.fromARGB(255, 68, 76, 231),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          "Progress: ${_uploadedSlots.values.where((v) => v == true).length}/${_questionSlots.length} uploaded",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color.fromARGB(255, 68, 76, 231),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                SizedBox(height: 12),
-
-                // Horizontally scrollable question buttons
-                SizedBox(
-                  height: 60,
-                  child: _isLoadingSlots
-                      ? Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : _questionSlots.isEmpty
-                      ? Center(
-                          child: Text(
-                            "No question slots found.",
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _questionSlots.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding: EdgeInsets.only(right: 12),
-                              child: _buildQuestionButton(
-                                context,
-                                "Q${index + 1}", // Show Q1, Q2, etc. instead of filename
-                              ),
-                            );
-                          },
-                        ),
-                ),
-
-                SizedBox(height: 16),
-
-                // Scrollbar with arrow buttons
-                Row(
-                  children: [
-                    // Left Arrow
-                    IconButton(
-                      onPressed: () {
-                        if (_scrollController.hasClients) {
-                          _scrollController.animateTo(
-                            _scrollController.offset - 150,
-                            duration: Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        }
-                      },
-                      icon: Icon(
-                        Icons.arrow_back_ios,
-                        size: 18,
-                        color: Colors.grey.shade600,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                    ),
-
-                    SizedBox(width: 1),
-
-                    // Scrollbar Track
-                    Expanded(
-                      child: GestureDetector(
-                        onHorizontalDragUpdate: (details) {
-                          if (_scrollController.hasClients &&
-                              _scrollbarKey.currentContext != null) {
-                            // Get the width of the track using the GlobalKey
-                            RenderBox? box =
-                                _scrollbarKey.currentContext!.findRenderObject()
-                                    as RenderBox?;
-                            if (box != null) {
-                              double trackWidth = box.size.width;
-
-                              // Calculate the new scroll position based on drag
-                              double maxScroll =
-                                  _scrollController.position.maxScrollExtent;
-                              double dragPosition = details.localPosition.dx;
-                              double progress = (dragPosition / trackWidth)
-                                  .clamp(0.0, 1.0);
-                              double newScrollOffset = maxScroll * progress;
-
-                              _scrollController.jumpTo(
-                                newScrollOffset.clamp(0.0, maxScroll),
-                              );
-                            }
-                          }
-                        },
-                        onTapDown: (details) {
-                          if (_scrollController.hasClients &&
-                              _scrollbarKey.currentContext != null) {
-                            // Get the width of the track using the GlobalKey
-                            RenderBox? box =
-                                _scrollbarKey.currentContext!.findRenderObject()
-                                    as RenderBox?;
-                            if (box != null) {
-                              double trackWidth = box.size.width;
-
-                              // Calculate the new scroll position based on tap
-                              double maxScroll =
-                                  _scrollController.position.maxScrollExtent;
-                              double tapPosition = details.localPosition.dx;
-                              double progress = (tapPosition / trackWidth)
-                                  .clamp(0.0, 1.0);
-                              double newScrollOffset = maxScroll * progress;
-
-                              _scrollController.animateTo(
-                                newScrollOffset.clamp(0.0, maxScroll),
-                                duration: Duration(milliseconds: 200),
-                                curve: Curves.easeInOut,
-                              );
-                            }
-                          }
-                        },
-                        child: Container(
-                          key: _scrollbarKey,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              return AnimatedBuilder(
-                                animation: _scrollController,
-                                builder: (context, child) {
-                                  // Calculate scroll progress with safety checks
-                                  double maxScroll = 0;
-                                  double currentScroll = 0;
-
-                                  if (_scrollController.hasClients &&
-                                      _scrollController
-                                          .position
-                                          .hasContentDimensions) {
-                                    maxScroll = _scrollController
-                                        .position
-                                        .maxScrollExtent;
-                                    currentScroll = _scrollController.offset;
-                                  }
-
-                                  double progress = maxScroll > 0
-                                      ? (currentScroll / maxScroll).clamp(
-                                          0.0,
-                                          1.0,
-                                        )
-                                      : 0;
-
-                                  // Calculate thumb width (proportional to visible content)
-                                  double thumbWidth =
-                                      constraints.maxWidth * 0.3;
-                                  double thumbPosition =
-                                      ((constraints.maxWidth - thumbWidth) *
-                                              progress)
-                                          .clamp(
-                                            0.0,
-                                            constraints.maxWidth - thumbWidth,
-                                          );
-
-                                  return Stack(
-                                    children: [
-                                      Positioned(
-                                        left: thumbPosition,
-                                        child: Container(
-                                          width: thumbWidth,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: const Color.fromARGB(
-                                              255,
-                                              65,
-                                              65,
-                                              65,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(width: 8),
-
-                    // Right Arrow
-                    IconButton(
-                      onPressed: () {
-                        if (_scrollController.hasClients) {
-                          _scrollController.animateTo(
-                            _scrollController.offset + 150,
-                            duration: Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        }
-                      },
-                      icon: Icon(
-                        Icons.arrow_forward_ios,
-                        size: 18,
-                        color: Colors.grey.shade600,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                    ),
-                  ],
-                ),
-
-                // SizedBox(height: 60),
-
-                // Capture Photograph / Add More Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _selectedSlot == null
-                        ? null
-                        : () async {
-                            final hasImages =
-                                _capturedImagesPerSlot[_selectedSlot!]
-                                    ?.isNotEmpty ??
-                                false;
-
-                            if (hasImages) {
-                              // Show images in a dialog
-                              _showImagesDialog();
-                            } else {
-                              // If no images, open camera capture flow
-                              print(' Opening camera for slot: $_selectedSlot');
-
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AnswerSheetCaptureFlow(
-                                    studentId: widget.studentId,
-                                    studentName: widget.studentName,
-                                    centreName: widget.centreName,
-                                    courseCode: widget.courseCode,
-                                    existingImages: [],
-                                  ),
-                                ),
-                              );
-
-                              print(' Camera returned with result: $result');
-                              print(' Result type: ${result.runtimeType}');
-
-                              if (result != null && result is List) {
-                                print(
-                                  ' Saving ${result.length} images for slot $_selectedSlot',
-                                );
-                                setState(() {
-                                  _capturedImagesPerSlot[_selectedSlot!] =
-                                      List<String>.from(result);
-                                  print(
-                                    ' Images saved! Total slots with images: ${_capturedImagesPerSlot.length}',
-                                  );
-                                  print(
-                                    ' Images for $_selectedSlot: ${_capturedImagesPerSlot[_selectedSlot!]?.length}',
-                                  );
-                                });
-                                // Save to SharedPreferences
-                                _saveCapturedImages();
-                              } else {
-                                print(' No images returned or invalid result');
-                              }
-                            }
-                          },
-                    icon: Icon(
-                      (_selectedSlot != null &&
-                              (_capturedImagesPerSlot[_selectedSlot!]
-                                      ?.isNotEmpty ??
-                                  false))
-                          ? Icons.visibility
-                          : Icons.camera_alt,
-                      size: 18,
-                    ),
-                    label: Text(
-                      _selectedSlot == null
-                          ? "Capture Photograph"
-                          : (_capturedImagesPerSlot[_selectedSlot!]
-                                    ?.isNotEmpty ??
-                                false)
-                          ? "View"
-                          : "Capture Photograph $_selectedSlot",
+        body: SingleChildScrollView(
+          child: Container(
+            padding: EdgeInsets.all(12),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Student Name",
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          (_selectedSlot != null &&
-                              (_capturedImagesPerSlot[_selectedSlot!]
-                                      ?.isNotEmpty ??
-                                  false))
-                          ? Colors.green
-                          : Color.fromARGB(255, 68, 76, 231),
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade200,
-                      disabledForegroundColor: Colors.grey.shade500,
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
+                  ),
+                  SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.studentName,
+                      style: TextStyle(fontSize: 14),
                     ),
                   ),
-                ),
 
-                SizedBox(height: 12),
-
-                // Upload Answer Sheet Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        (_selectedSlot == null ||
-                            !(_capturedImagesPerSlot[_selectedSlot!]
-                                    ?.isNotEmpty ??
-                                false))
-                        ? null
-                        : () async {
-                            // Upload specific slot
-                            // Show loading dialog
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (c) =>
-                                  Center(child: CircularProgressIndicator()),
-                            );
-
-                            try {
-                              final storageService = StorageService();
-                              final result = await storageService
-                                  .uploadAnswerSheets(
-                                    studentId: widget.studentId,
-                                    studentName: widget.studentName,
-                                    courseCode: widget.courseCode,
-                                    capturedImages: {
-                                      _selectedSlot!:
-                                          _capturedImagesPerSlot[_selectedSlot!]!,
-                                    },
-                                  );
-                              storageService.dispose();
-
-                              if (result['success'] == true) {
-                                // Log the upload to S3 CSV
-                                try {
-                                  final prefs = SharedPreferencesAsync();
-                                  final supervisorId =
-                                      await prefs.getString(
-                                        'current_supervisor_id',
-                                      ) ??
-                                      'unknown';
-
-                                  // Normalize course code (e.g. DUMM ZA111-EC3R -> DUMMZA111)
-                                  final shortCourseCode = widget.courseCode
-                                      .split('-')
-                                      .first
-                                      .replaceAll(' ', '');
-
-                                  // Fetch actual course name from Lambda
-                                  String courseName =
-                                      widget.courseCode; // Default to full code
-                                  try {
-                                    print(
-                                      ' Fetching course name for: $shortCourseCode',
-                                    );
-                                    final courseNameResult =
-                                        await CourseNameService.getCourseName(
-                                          shortCourseCode,
-                                        );
-                                    if (courseNameResult['success'] == true) {
-                                      courseName =
-                                          courseNameResult['courseName'] ??
-                                          widget.courseCode;
-                                      print(' Got course name: $courseName');
-                                    } else {
-                                      print(
-                                        ' Could not fetch course name, using course code',
-                                      );
-                                    }
-                                  } catch (courseNameError) {
-                                    print(
-                                      ' Error fetching course name: $courseNameError',
-                                    );
-                                    // Continue with default course name
-                                  }
-
-                                  await UploadLogService.logUpload(
-                                    supervisorId: supervisorId,
-                                    studentId: widget.studentId,
-                                    courseCode:
-                                        shortCourseCode, // Short code: DUMMZA110
-                                    courseName:
-                                        courseName, // Actual course name from database
-                                    questionNo:
-                                        _selectedSlot!, // Q1, Q2, Q3, etc.
-                                  );
-                                  print(' Upload logged successfully');
-                                } catch (logError) {
-                                  print(' Failed to log upload: $logError');
-                                  // Don't fail the upload if logging fails
-                                }
-
-                                // Update DynamoDB Attendance & Finished Tables
-                                if (widget.attendanceId != null) {
-                                  try {
-                                    final uploadedQ =
-                                        _selectedSlot!; // e.g., "Q1"
-                                    final qNum =
-                                        int.tryParse(
-                                          uploadedQ.replaceAll(
-                                            RegExp(r'[^0-9]'),
-                                            '',
-                                          ),
-                                        ) ??
-                                        0;
-
-                                    // 1. Decrement pending count
-                                    await DynamoDBAttendanceService.decrementNoOfQuestionsPending(
-                                      bitsId: widget.studentId,
-                                      attendanceId: widget.attendanceId!,
-                                    );
-
-                                    // 2. Ensure initial finishedTable record exists (will skip if it already does)
-                                    await DynamoDBFinishedService.createInitialRecord(
-                                      bitsId: widget.studentId,
-                                      attendanceId: widget.attendanceId!,
-                                      courseCode: widget.courseCode
-                                          .toUpperCase()
-                                          .replaceAll(' ', ''),
-                                      examDate: widget.examDate,
-                                      sessionType: widget.session,
-                                    );
-
-                                    // 3. Update finishedTable with page count
-                                    await DynamoDBFinishedService.updateQuestionTimestamp(
-                                      bitsId: widget.studentId,
-                                      attendanceId: widget.attendanceId!,
-                                      questionNumber: qNum,
-                                      uploadTime: DateTime.now(),
-                                      pageCount:
-                                          _capturedImagesPerSlot[uploadedQ]
-                                              ?.length ??
-                                          0,
-                                    );
-
-                                    print(
-                                      ' DynamoDB records updated for $uploadedQ',
-                                    );
-                                  } catch (dbError) {
-                                    print(
-                                      ' Failed to update DynamoDB: $dbError',
-                                    );
-                                    // Soft fail
-                                  }
-                                }
-
-                                String uploadedSlot =
-                                    _selectedSlot!; // Store before changing
-
-                                // Clean up uploaded images
-                                try {
-                                  // 1. Delete image files from disk
-                                  final imagesToDelete =
-                                      _capturedImagesPerSlot[uploadedSlot];
-                                  if (imagesToDelete != null) {
-                                    for (var imagePath in imagesToDelete) {
-                                      final file = File(imagePath);
-                                      if (await file.exists()) {
-                                        await file.delete();
-                                        print(
-                                          ' Deleted image file: $imagePath',
-                                        );
-                                      }
-                                    }
-                                  }
-
-                                  // 2. Remove from memory
-                                  _capturedImagesPerSlot.remove(uploadedSlot);
-
-                                  // 3. Update SharedPreferences
-                                  await _saveCapturedImages();
-                                  print(' Cleaned up images for $uploadedSlot');
-                                } catch (cleanupError) {
-                                  print(
-                                    ' Error cleaning up images: $cleanupError',
-                                  );
-                                  // Don't fail the upload if cleanup fails
-                                }
-
-                                setState(() {
-                                  _uploadedSlots[_selectedSlot!] = true;
-
-                                  // Auto-select next unuploaded slot
-                                  String? nextSlot;
-                                  for (
-                                    int i = 0;
-                                    i < _questionSlots.length;
-                                    i++
-                                  ) {
-                                    String slotName = "Q${i + 1}";
-                                    if (_uploadedSlots[slotName] != true) {
-                                      nextSlot = slotName;
-                                      break;
-                                    }
-                                  }
-
-                                  if (nextSlot != null) {
-                                    _selectedSlot = nextSlot;
-                                    // Scroll to the next slot
-                                    if (_scrollController.hasClients) {
-                                      int nextIndex =
-                                          int.parse(nextSlot.substring(1)) - 1;
-                                      double scrollPosition =
-                                          nextIndex *
-                                          72.0; // 60 width + 12 padding
-                                      _scrollController.animateTo(
-                                        scrollPosition,
-                                        duration: Duration(milliseconds: 500),
-                                        curve: Curves.easeInOut,
-                                      );
-                                    }
-                                  } else {
-                                    _selectedSlot = null; // All uploaded
-                                  }
-                                });
-
-                                int uploadedCount = _uploadedSlots.values
-                                    .where((v) => v == true)
-                                    .length;
-                                // Close loading dialog on success
-                                if (mounted) {
-                                  Navigator.of(this.context).pop();
-                                  ScaffoldMessenger.of(this.context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        "$uploadedSlot uploaded successfully ($uploadedCount/${_questionSlots.length} completed)",
-                                      ),
-                                      backgroundColor: Colors.green,
-                                      duration: const Duration(seconds: 2),
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.all(16),
-                                    ),
-                                  );
-                                }
-                              } else {
-                                // Close loading dialog on failure
-                                if (mounted) {
-                                  Navigator.of(this.context).pop();
-                                  ScaffoldMessenger.of(this.context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        "Upload failed: ${result['error'] ?? 'Please check your connection and try again.'}",
-                                      ),
-                                      backgroundColor: Colors.red,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: const EdgeInsets.all(16),
-                                    ),
-                                  );
-                                }
-                              }
-                            } catch (e) {
-                              // Close loading dialog if still open
-                              if (mounted) {
-                                Navigator.of(this.context).pop();
-                                ScaffoldMessenger.of(this.context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      "Upload failed. Please check your connection and try again.",
-                                    ),
-                                    backgroundColor: Colors.red,
-                                    behavior: SnackBarBehavior.floating,
-                                    margin: EdgeInsets.all(16),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                    icon: Icon(Icons.upload_file, size: 18),
-                    label: Text(
-                      _selectedSlot == null
-                          ? "Upload Answer Sheet"
-                          : "Upload Answer Sheet $_selectedSlot",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade200,
-                      disabledForegroundColor: Colors.grey.shade500,
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-
-                SizedBox(height: 12),
-
-                // Submit All Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        (_uploadedSlots.values.any((v) => v == true) &&
-                            _capturedImagesPerSlot.isEmpty)
-                        ? _finishExam
-                        : null,
-                    icon: Icon(Icons.check_circle, size: 18),
-                    label: Text(
-                      "Submit All",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color.fromARGB(255, 68, 76, 231),
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade200,
-                      disabledForegroundColor: Colors.grey.shade500,
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-
-                if (_showImagesPreview &&
-                    _selectedSlot != null &&
-                    (_capturedImagesPerSlot[_selectedSlot!]?.isNotEmpty ??
-                        false)) ...[
-                  SizedBox(height: 24),
-                  Divider(),
                   SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      "Captured Images for $_selectedSlot",
+                      "Student ID",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.studentId,
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+
+                  SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Centre Name",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.centreName,
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ),
+
+                  SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Course Code",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(() {
+                      final code = widget.courseCode;
+                      final zIndex = code.indexOf(RegExp(r'[Zz]'));
+                      if (zIndex > 0 &&
+                          zIndex < code.length &&
+                          code[zIndex - 1] != ' ') {
+                        return '${code.substring(0, zIndex)} ${code.substring(zIndex)}';
+                      }
+                      return code;
+                    }(), style: TextStyle(fontSize: 14)),
+                  ),
+
+                  SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      "Upload Answer Sheets",
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  SizedBox(height: 12),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                    itemCount: _capturedImagesPerSlot[_selectedSlot!]!.length,
-                    itemBuilder: (context, index) {
-                      final imagePath =
-                          _capturedImagesPerSlot[_selectedSlot!]![index];
-                      return Stack(
-                        children: [
-                          Positioned.fill(
-                            child: GestureDetector(
-                              onTap: () =>
-                                  _showFullScreenImage(context, imagePath),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  File(imagePath),
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: GestureDetector(
-                              onTap: () {
-                                _deleteImage(_selectedSlot!, index);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.delete,
-                                  size: 14,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 4,
-                            left: 4,
-                            child: GestureDetector(
-                              onTap: () async {
-                                final croppedResult = await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ImageCropperPage(
-                                      image: XFile(imagePath),
-                                    ),
-                                  ),
-                                );
 
-                                if (croppedResult != null &&
-                                    croppedResult is XFile) {
-                                  setState(() {
-                                    _capturedImagesPerSlot[_selectedSlot!]![index] =
-                                        croppedResult.path;
-                                  });
-                                  _saveCapturedImages();
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.crop,
-                                  size: 14,
-                                  color: Color(0xFF444CE7),
-                                ),
-                              ),
-                            ),
+                  SizedBox(height: 8),
+
+                  // Progress indicator
+                  if (_questionSlots.isNotEmpty)
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Color.fromARGB(
+                          255,
+                          68,
+                          76,
+                          231,
+                        ).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Color.fromARGB(
+                            255,
+                            68,
+                            76,
+                            231,
+                          ).withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.upload_file,
+                            size: 18,
+                            color: Color.fromARGB(255, 68, 76, 231),
                           ),
-                          Positioned(
-                            bottom: 4,
-                            left: 32,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  _showFullScreenImage(context, imagePath),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.visibility,
-                                  size: 14,
-                                  color: Color(0xFF444CE7),
-                                ),
-                              ),
+                          SizedBox(width: 8),
+                          Text(
+                            "Progress: ${_uploadedSlots.values.where((v) => v == true).length}/${_questionSlots.length} uploaded",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color.fromARGB(255, 68, 76, 231),
                             ),
                           ),
                         ],
-                      );
-                    },
+                      ),
+                    ),
+
+                  SizedBox(height: 12),
+
+                  // Horizontally scrollable question buttons
+                  SizedBox(
+                    height: 60,
+                    child: _isLoadingSlots
+                        ? Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : _questionSlots.isEmpty
+                        ? Center(
+                            child: Text(
+                              "No question slots found.",
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _questionSlots.length,
+                            itemBuilder: (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: _buildQuestionButton(
+                                  context,
+                                  _questionSlots[index],
+                                ),
+                              );
+                            },
+                          ),
                   ),
+
                   SizedBox(height: 16),
+
+                  // Scrollbar with arrow buttons
+                  Row(
+                    children: [
+                      // Left Arrow
+                      IconButton(
+                        onPressed: () {
+                          if (_scrollController.hasClients) {
+                            _scrollController.animateTo(
+                              _scrollController.offset - 150,
+                              duration: Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        },
+                        icon: Icon(
+                          Icons.arrow_back_ios,
+                          size: 18,
+                          color: Colors.grey.shade600,
+                        ),
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(),
+                      ),
+
+                      SizedBox(width: 1),
+
+                      // Scrollbar Track
+                      Expanded(
+                        child: GestureDetector(
+                          onHorizontalDragUpdate: (details) {
+                            if (_scrollController.hasClients &&
+                                _scrollbarKey.currentContext != null) {
+                              // Get the width of the track using the GlobalKey
+                              RenderBox? box =
+                                  _scrollbarKey.currentContext!
+                                          .findRenderObject()
+                                      as RenderBox?;
+                              if (box != null) {
+                                double trackWidth = box.size.width;
+
+                                // Calculate the new scroll position based on drag
+                                double maxScroll =
+                                    _scrollController.position.maxScrollExtent;
+                                double dragPosition = details.localPosition.dx;
+                                double progress = (dragPosition / trackWidth)
+                                    .clamp(0.0, 1.0);
+                                double newScrollOffset = maxScroll * progress;
+
+                                _scrollController.jumpTo(
+                                  newScrollOffset.clamp(0.0, maxScroll),
+                                );
+                              }
+                            }
+                          },
+                          onTapDown: (details) {
+                            if (_scrollController.hasClients &&
+                                _scrollbarKey.currentContext != null) {
+                              // Get the width of the track using the GlobalKey
+                              RenderBox? box =
+                                  _scrollbarKey.currentContext!
+                                          .findRenderObject()
+                                      as RenderBox?;
+                              if (box != null) {
+                                double trackWidth = box.size.width;
+
+                                // Calculate the new scroll position based on tap
+                                double maxScroll =
+                                    _scrollController.position.maxScrollExtent;
+                                double tapPosition = details.localPosition.dx;
+                                double progress = (tapPosition / trackWidth)
+                                    .clamp(0.0, 1.0);
+                                double newScrollOffset = maxScroll * progress;
+
+                                _scrollController.animateTo(
+                                  newScrollOffset.clamp(0.0, maxScroll),
+                                  duration: Duration(milliseconds: 200),
+                                  curve: Curves.easeInOut,
+                                );
+                              }
+                            }
+                          },
+                          child: Container(
+                            key: _scrollbarKey,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return AnimatedBuilder(
+                                  animation: _scrollController,
+                                  builder: (context, child) {
+                                    // Calculate scroll progress with safety checks
+                                    double maxScroll = 0;
+                                    double currentScroll = 0;
+
+                                    if (_scrollController.hasClients &&
+                                        _scrollController
+                                            .position
+                                            .hasContentDimensions) {
+                                      maxScroll = _scrollController
+                                          .position
+                                          .maxScrollExtent;
+                                      currentScroll = _scrollController.offset;
+                                    }
+
+                                    double progress = maxScroll > 0
+                                        ? (currentScroll / maxScroll).clamp(
+                                            0.0,
+                                            1.0,
+                                          )
+                                        : 0;
+
+                                    // Calculate thumb width (proportional to visible content)
+                                    double thumbWidth =
+                                        constraints.maxWidth * 0.3;
+                                    double thumbPosition =
+                                        ((constraints.maxWidth - thumbWidth) *
+                                                progress)
+                                            .clamp(
+                                              0.0,
+                                              constraints.maxWidth - thumbWidth,
+                                            );
+
+                                    return Stack(
+                                      children: [
+                                        Positioned(
+                                          left: thumbPosition,
+                                          child: Container(
+                                            width: thumbWidth,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: const Color.fromARGB(
+                                                255,
+                                                65,
+                                                65,
+                                                65,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(width: 8),
+
+                      // Right Arrow
+                      IconButton(
+                        onPressed: () {
+                          if (_scrollController.hasClients) {
+                            _scrollController.animateTo(
+                              _scrollController.offset + 150,
+                              duration: Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        },
+                        icon: Icon(
+                          Icons.arrow_forward_ios,
+                          size: 18,
+                          color: Colors.grey.shade600,
+                        ),
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(),
+                      ),
+                    ],
+                  ),
+
+                  // SizedBox(height: 60),
+
+                  // Capture Photograph / Add More Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () async {
-                        // Open capture flow with existing images
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AnswerSheetCaptureFlow(
-                              studentId: widget.studentId,
-                              studentName: widget.studentName,
-                              centreName: widget.centreName,
-                              courseCode: widget.courseCode,
-                              existingImages:
-                                  _capturedImagesPerSlot[_selectedSlot!],
-                            ),
-                          ),
-                        );
+                      onPressed: _selectedSlot == null
+                          ? null
+                          : () async {
+                              final hasImages =
+                                  _capturedImagesPerSlot[_selectedSlot!]
+                                      ?.isNotEmpty ??
+                                  false;
 
-                        if (result != null && result is List) {
-                          setState(() {
-                            _capturedImagesPerSlot[_selectedSlot!] =
-                                List<String>.from(result);
-                          });
-                          // Save to SharedPreferences
-                          _saveCapturedImages();
-                        }
-                      },
-                      icon: Icon(Icons.add_a_photo, size: 18),
+                              if (hasImages) {
+                                // Show images in a dialog
+                                _showImagesDialog();
+                              } else {
+                                // If no images, open camera capture flow
+                                print(
+                                  ' Opening camera for slot: $_selectedSlot',
+                                );
+
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        AnswerSheetCaptureFlow(
+                                          studentId: widget.studentId,
+                                          studentName: widget.studentName,
+                                          centreName: widget.centreName,
+                                          courseCode: widget.courseCode,
+                                          existingImages: [],
+                                        ),
+                                  ),
+                                );
+
+                                print(' Camera returned with result: $result');
+                                print(' Result type: ${result.runtimeType}');
+
+                                if (result != null && result is List) {
+                                  print(
+                                    ' Saving ${result.length} images for slot $_selectedSlot',
+                                  );
+                                  setState(() {
+                                    _capturedImagesPerSlot[_selectedSlot!] =
+                                        List<String>.from(result);
+                                    print(
+                                      ' Images saved! Total slots with images: ${_capturedImagesPerSlot.length}',
+                                    );
+                                    print(
+                                      ' Images for $_selectedSlot: ${_capturedImagesPerSlot[_selectedSlot!]?.length}',
+                                    );
+                                  });
+                                  // Save to SharedPreferences
+                                  _saveCapturedImages();
+                                } else {
+                                  print(
+                                    ' No images returned or invalid result',
+                                  );
+                                }
+                              }
+                            },
+                      icon: Icon(
+                        (_selectedSlot != null &&
+                                (_capturedImagesPerSlot[_selectedSlot!]
+                                        ?.isNotEmpty ??
+                                    false))
+                            ? Icons.visibility
+                            : Icons.camera_alt,
+                        size: 18,
+                      ),
                       label: Text(
-                        "Add more",
+                        _selectedSlot == null
+                            ? "Capture Photograph"
+                            : (_capturedImagesPerSlot[_selectedSlot!]
+                                      ?.isNotEmpty ??
+                                  false)
+                            ? "View"
+                            : "Capture Photograph $_selectedSlot",
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor:
+                            (_selectedSlot != null &&
+                                (_capturedImagesPerSlot[_selectedSlot!]
+                                        ?.isNotEmpty ??
+                                    false))
+                            ? Colors.green
+                            : Color.fromARGB(255, 68, 76, 231),
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.shade200,
+                        disabledForegroundColor: Colors.grey.shade500,
                         padding: EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -1383,19 +912,666 @@ class _UploadPageState extends State<UploadPage> {
                       ),
                     ),
                   ),
+
+                  SizedBox(height: 12),
+
+                  // Upload Answer Sheet Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed:
+                          (_selectedSlot == null ||
+                              !(_capturedImagesPerSlot[_selectedSlot!]
+                                      ?.isNotEmpty ??
+                                  false))
+                          ? null
+                          : () async {
+                              // Upload specific slot
+                              // Show loading dialog
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (c) =>
+                                    Center(child: CircularProgressIndicator()),
+                              );
+
+                              try {
+                                final storageService = StorageService();
+                                final result = await storageService
+                                    .uploadAnswerSheets(
+                                      studentId: widget.studentId,
+                                      studentName: widget.studentName,
+                                      courseCode: widget.courseCode,
+                                      capturedImages: {
+                                        _selectedSlot!:
+                                            _capturedImagesPerSlot[_selectedSlot!]!,
+                                      },
+                                    );
+                                storageService.dispose();
+
+                                if (result['success'] == true) {
+                                  // Log the upload to S3 CSV
+                                  try {
+                                    final prefs = SharedPreferencesAsync();
+                                    final supervisorId =
+                                        await prefs.getString(
+                                          'current_supervisor_id',
+                                        ) ??
+                                        'unknown';
+
+                                    // Normalize course code (e.g. DUMM ZA111-EC3R -> DUMMZA111)
+                                    final shortCourseCode = widget.courseCode
+                                        .split('-')
+                                        .first
+                                        .replaceAll(' ', '');
+
+                                    // Fetch actual course name from Lambda
+                                    String courseName = widget
+                                        .courseCode; // Default to full code
+                                    try {
+                                      print(
+                                        ' Fetching course name for: $shortCourseCode',
+                                      );
+                                      final courseNameResult =
+                                          await CourseNameService.getCourseName(
+                                            shortCourseCode,
+                                          );
+                                      if (courseNameResult['success'] == true) {
+                                        courseName =
+                                            courseNameResult['courseName'] ??
+                                            widget.courseCode;
+                                        print(' Got course name: $courseName');
+                                      } else {
+                                        print(
+                                          ' Could not fetch course name, using course code',
+                                        );
+                                      }
+                                    } catch (courseNameError) {
+                                      print(
+                                        ' Error fetching course name: $courseNameError',
+                                      );
+                                      // Continue with default course name
+                                    }
+
+                                    await UploadLogService.logUpload(
+                                      supervisorId: supervisorId,
+                                      studentId: widget.studentId,
+                                      courseCode:
+                                          shortCourseCode, // Short code: DUMMZA110
+                                      courseName:
+                                          courseName, // Actual course name from database
+                                      questionNo:
+                                          _selectedSlot!, // Q1, Q2, Q3, etc.
+                                    );
+                                    print(' Upload logged successfully');
+                                  } catch (logError) {
+                                    print(' Failed to log upload: $logError');
+                                    // Don't fail the upload if logging fails
+                                  }
+
+                                  // Update DynamoDB Attendance & Finished Tables
+                                  if (widget.attendanceId != null) {
+                                    try {
+                                      final uploadedQ =
+                                          _selectedSlot!; // e.g., "FrontPage" or "Q1"
+                                      final isFrontPage = uploadedQ
+                                          .toLowerCase()
+                                          .contains('front');
+                                      final qNum = isFrontPage
+                                          ? 0
+                                          : (int.tryParse(
+                                                  uploadedQ.replaceAll(
+                                                    RegExp(r'[^0-9]'),
+                                                    '',
+                                                  ),
+                                                ) ??
+                                                0);
+
+                                      // 1. Decrement pending count
+                                      await DynamoDBAttendanceService.decrementNoOfQuestionsPending(
+                                        bitsId: widget.studentId,
+                                        attendanceId: widget.attendanceId!,
+                                      );
+
+                                      // 2. Ensure initial finishedTable record exists (will skip if it already does)
+                                      await DynamoDBFinishedService.createInitialRecord(
+                                        bitsId: widget.studentId,
+                                        attendanceId: widget.attendanceId!,
+                                        courseCode: widget.courseCode
+                                            .toUpperCase()
+                                            .replaceAll(' ', ''),
+                                        examDate: widget.examDate,
+                                        sessionType: widget.session,
+                                      );
+
+                                      // 3. Update finishedTable with page count
+                                      await DynamoDBFinishedService.updateQuestionTimestamp(
+                                        bitsId: widget.studentId,
+                                        attendanceId: widget.attendanceId!,
+                                        questionNumber: qNum,
+                                        uploadTime: DateTime.now(),
+                                        pageCount:
+                                            _capturedImagesPerSlot[uploadedQ]
+                                                ?.length ??
+                                            0,
+                                      );
+
+                                      print(
+                                        ' DynamoDB records updated for $uploadedQ',
+                                      );
+                                    } catch (dbError) {
+                                      print(
+                                        ' Failed to update DynamoDB: $dbError',
+                                      );
+                                      // Soft fail
+                                    }
+                                  }
+
+                                  String uploadedSlot =
+                                      _selectedSlot!; // Store before changing
+
+                                  // Clean up uploaded images
+                                  try {
+                                    // 1. Delete image files from disk
+                                    final imagesToDelete =
+                                        _capturedImagesPerSlot[uploadedSlot];
+                                    if (imagesToDelete != null) {
+                                      for (var imagePath in imagesToDelete) {
+                                        final file = File(imagePath);
+                                        if (await file.exists()) {
+                                          await file.delete();
+                                          print(
+                                            ' Deleted image file: $imagePath',
+                                          );
+                                        }
+                                      }
+                                    }
+
+                                    // 2. Remove from memory
+                                    _capturedImagesPerSlot.remove(uploadedSlot);
+
+                                    // 3. Update SharedPreferences
+                                    await _saveCapturedImages();
+                                    print(
+                                      ' Cleaned up images for $uploadedSlot',
+                                    );
+                                  } catch (cleanupError) {
+                                    print(
+                                      ' Error cleaning up images: $cleanupError',
+                                    );
+                                    // Don't fail the upload if cleanup fails
+                                  }
+
+                                  setState(() {
+                                    _uploadedSlots[_selectedSlot!] = true;
+
+                                    // Auto-select next unuploaded slot
+                                    String? nextSlot;
+                                    for (
+                                      int i = 0;
+                                      i < _questionSlots.length;
+                                      i++
+                                    ) {
+                                      String slotName = _questionSlots[i];
+                                      if (_uploadedSlots[slotName] != true) {
+                                        nextSlot = slotName;
+                                        break;
+                                      }
+                                    }
+
+                                    if (nextSlot != null) {
+                                      _selectedSlot = nextSlot;
+                                      // Scroll to the next slot
+                                      if (_scrollController.hasClients) {
+                                        int nextIndex = _questionSlots.indexOf(
+                                          nextSlot,
+                                        );
+                                        double scrollPosition =
+                                            nextIndex *
+                                            72.0; // 60 width + 12 padding
+                                        _scrollController.animateTo(
+                                          scrollPosition,
+                                          duration: const Duration(
+                                            milliseconds: 500,
+                                          ),
+                                          curve: Curves.easeInOut,
+                                        );
+                                      }
+                                    } else {
+                                      _selectedSlot = null; // All uploaded
+                                    }
+                                  });
+
+                                  int uploadedCount = _uploadedSlots.values
+                                      .where((v) => v == true)
+                                      .length;
+                                  bool isAllUploaded =
+                                      _questionSlots.isNotEmpty &&
+                                      uploadedCount == _questionSlots.length;
+
+                                  // Close loading dialog on success
+                                  if (mounted) {
+                                    Navigator.of(this.context).pop();
+                                  }
+
+                                  if (isAllUploaded) {
+                                    // 1. Auto-update Finished Time in DynamoDB
+                                    if (widget.attendanceId != null) {
+                                      try {
+                                        await DynamoDBAttendanceService.updateFinishedTime(
+                                          bitsId: widget.studentId,
+                                          attendanceId: widget.attendanceId!,
+                                          finishedTime: DateTime.now(),
+                                        );
+                                        print(
+                                          ' Exam marked as finished automatically in DynamoDB',
+                                        );
+                                      } catch (dbError) {
+                                        print(
+                                          ' Failed to auto-update finishedTime: $dbError',
+                                        );
+                                      }
+                                    }
+
+                                    // 2. Show completion dialog and return to student list
+                                    if (mounted) {
+                                      await showDialog(
+                                        context: this.context,
+                                        barrierDismissible: false,
+                                        builder: (dialogCtx) => AlertDialog(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                          title: Row(
+                                            children: const [
+                                              Icon(
+                                                Icons.check_circle,
+                                                color: Colors.green,
+                                                size: 28,
+                                              ),
+                                              SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  "All Sheets Uploaded",
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 18,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          content: Text(
+                                            "All $uploadedCount answer sheets have been uploaded successfully. The student's exam session is now marked as complete.",
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          actions: [
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    const Color.fromARGB(
+                                                      255,
+                                                      68,
+                                                      76,
+                                                      231,
+                                                    ),
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 24,
+                                                      vertical: 10,
+                                                    ),
+                                              ),
+                                              onPressed: () {
+                                                Navigator.of(dialogCtx).pop();
+                                                if (mounted) {
+                                                  Navigator.of(
+                                                    this.context,
+                                                  ).pop();
+                                                }
+                                              },
+                                              child: const Text(
+                                                "OK",
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  } else {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        this.context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "$uploadedSlot uploaded successfully ($uploadedCount/${_questionSlots.length} completed)",
+                                          ),
+                                          backgroundColor: Colors.green,
+                                          duration: const Duration(seconds: 2),
+                                          behavior: SnackBarBehavior.floating,
+                                          margin: const EdgeInsets.all(16),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  // Close loading dialog on failure
+                                  if (mounted) {
+                                    Navigator.of(this.context).pop();
+                                    ScaffoldMessenger.of(
+                                      this.context,
+                                    ).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          "Upload failed: ${result['error'] ?? 'Please check your connection and try again.'}",
+                                        ),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                        margin: const EdgeInsets.all(16),
+                                      ),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                // Close loading dialog if still open
+                                if (mounted) {
+                                  Navigator.of(this.context).pop();
+                                  ScaffoldMessenger.of(
+                                    this.context,
+                                  ).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "Upload failed. Please check your connection and try again.",
+                                      ),
+                                      backgroundColor: Colors.red,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: EdgeInsets.all(16),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      icon: Icon(Icons.upload_file, size: 18),
+                      label: Text(
+                        _selectedSlot == null
+                            ? "Upload Answer Sheet"
+                            : "Upload Answer Sheet $_selectedSlot",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.shade200,
+                        disabledForegroundColor: Colors.grey.shade500,
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+
+                  if (_showImagesPreview &&
+                      _selectedSlot != null &&
+                      (_capturedImagesPerSlot[_selectedSlot!]?.isNotEmpty ??
+                          false)) ...[
+                    SizedBox(height: 24),
+                    Divider(),
+                    SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Captured Images for $_selectedSlot",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                      itemCount: _capturedImagesPerSlot[_selectedSlot!]!.length,
+                      itemBuilder: (context, index) {
+                        final imagePath =
+                            _capturedImagesPerSlot[_selectedSlot!]![index];
+                        return Stack(
+                          children: [
+                            Positioned.fill(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    _showFullScreenImage(context, imagePath),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    File(imagePath),
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _deleteImage(_selectedSlot!, index);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    size: 14,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 4,
+                              left: 4,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  final croppedResult = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ImageCropperPage(
+                                        image: XFile(imagePath),
+                                      ),
+                                    ),
+                                  );
+
+                                  if (croppedResult != null &&
+                                      croppedResult is XFile) {
+                                    setState(() {
+                                      _capturedImagesPerSlot[_selectedSlot!]![index] =
+                                          croppedResult.path;
+                                    });
+                                    _saveCapturedImages();
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.crop,
+                                    size: 14,
+                                    color: Color(0xFF444CE7),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 4,
+                              left: 32,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    _showFullScreenImage(context, imagePath),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.visibility,
+                                    size: 14,
+                                    color: Color(0xFF444CE7),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          // Open capture flow with existing images
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AnswerSheetCaptureFlow(
+                                studentId: widget.studentId,
+                                studentName: widget.studentName,
+                                centreName: widget.centreName,
+                                courseCode: widget.courseCode,
+                                existingImages:
+                                    _capturedImagesPerSlot[_selectedSlot!],
+                              ),
+                            ),
+                          );
+
+                          if (result != null && result is List) {
+                            setState(() {
+                              _capturedImagesPerSlot[_selectedSlot!] =
+                                  List<String>.from(result);
+                            });
+                            // Save to SharedPreferences
+                            _saveCapturedImages();
+                          }
+                        },
+                        icon: Icon(Icons.add_a_photo, size: 18),
+                        label: Text(
+                          "Add more",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
-      ),
 
-      bottomNavigationBar: const AppFooter(),
+        bottomNavigationBar: const AppFooter(),
+      ),
     );
   }
 
-  Future<void> _finishExam() async {
-    // Build list of uploaded question slot names
+  Future<bool> _handleBackNavigation() async {
+    if (!mounted) return true;
+
+    // 1. If there are captured unuploaded images, warn user
+    if (_capturedImagesPerSlot.isNotEmpty) {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Discard Captured Images?"),
+          content: const Text(
+            "You have captured answer sheet images that are not yet uploaded. Leaving now will discard these unuploaded images.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text("Stay"),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text("Discard & Exit"),
+            ),
+          ],
+        ),
+      );
+      if (discard != true) return false;
+    }
+
+    if (!mounted) return true;
+
+    // 2. If some (but not all) questions were uploaded, prompt to finalize
     final uploadedList =
         _uploadedSlots.entries
             .where((e) => e.value == true)
@@ -1403,92 +1579,77 @@ class _UploadPageState extends State<UploadPage> {
             .toList()
           ..sort();
 
-    final uploadedText = uploadedList.join(', ');
-
-    // Confirm dialog
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text('Finalize & Submit Exam'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You have uploaded: ${uploadedText.isEmpty ? "None" : uploadedText}',
-              style: TextStyle(fontWeight: FontWeight.bold),
+    if (uploadedList.isNotEmpty &&
+        uploadedList.length < _questionSlots.length) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text("Finish Student Exam?"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "You have uploaded ${uploadedList.length} of ${_questionSlots.length} questions (${uploadedList.join(', ')}).",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Do you want to finalize this exam session and mark it complete for this student?",
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text("Cancel"),
             ),
-            SizedBox(height: 10),
-            Text(
-              'Are you sure you want to submit and mark this session as complete for this student?',
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromARGB(255, 68, 76, 231),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text("Yes, Finish Exam"),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () => Navigator.pop(c, false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: Text('Submit'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    if (confirm != true) return;
-
-    if (widget.attendanceId != null) {
-      try {
-        final success = await DynamoDBAttendanceService.updateFinishedTime(
-          bitsId: widget.studentId,
-          attendanceId: widget.attendanceId!,
-          finishedTime: DateTime.now(),
-        );
-
-        if (success && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Exam finalized successfully."),
-              backgroundColor: Colors.green,
-            ),
-          );
+      if (confirm == true) {
+        if (widget.attendanceId != null) {
+          try {
+            await DynamoDBAttendanceService.updateFinishedTime(
+              bitsId: widget.studentId,
+              attendanceId: widget.attendanceId!,
+              finishedTime: DateTime.now(),
+            );
+            print(' Exam marked as finished on back in DynamoDB');
+          } catch (e) {
+            print(' Error marking finished on back: $e');
+          }
         }
-        print(' Exam marked as finished in DynamoDB');
-      } catch (e) {
-        print(' Error marking finished: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                "Connection notice: Finish time could not be saved online.",
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
+        return true;
       }
-    } else {
-      print(' Cannot mark finished: attendanceId is null');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Attendance record not found for this student."),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
+      return false;
     }
 
-    if (mounted) Navigator.pop(context); // Go back to student selection
+    return true;
   }
 
   // Build individual question button
   Widget _buildQuestionButton(BuildContext context, String slotName) {
     bool isSelected = _selectedSlot == slotName;
     bool isUploaded = _uploadedSlots[slotName] == true;
+    bool isFrontPage = slotName.toLowerCase().contains('front');
+    String displayLabel = isFrontPage ? "Front\nPage" : slotName;
+    double buttonWidth = isFrontPage ? 75 : 60;
 
     return InkWell(
       onTap: () {
@@ -1497,26 +1658,26 @@ class _UploadPageState extends State<UploadPage> {
         });
       },
       child: Container(
-        width: 60,
+        width: buttonWidth,
         height: 60,
         decoration: BoxDecoration(
           color: isUploaded
               ? Colors.green
               : (isSelected
-                    ? Color.fromARGB(255, 68, 76, 231)
-                    : Color.fromARGB(255, 68, 76, 231).withOpacity(0.2)),
+                    ? const Color.fromARGB(255, 68, 76, 231)
+                    : const Color.fromARGB(255, 68, 76, 231).withOpacity(0.2)),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isUploaded
                 ? Colors.green.shade800
                 : (isSelected
-                      ? Color.fromARGB(255, 68, 76, 231)
+                      ? const Color.fromARGB(255, 68, 76, 231)
                       : Colors.white),
             width: 2,
           ),
           boxShadow: isSelected
               ? [
-                  BoxShadow(
+                  const BoxShadow(
                     color: Color.fromARGB(255, 255, 255, 255),
                     blurRadius: 8,
                     offset: Offset(0, 4),
@@ -1528,20 +1689,22 @@ class _UploadPageState extends State<UploadPage> {
           alignment: Alignment.center,
           children: [
             if (isUploaded)
-              Positioned(
+              const Positioned(
                 top: 4,
                 right: 4,
                 child: Icon(Icons.check_circle, color: Colors.white, size: 16),
               ),
             Center(
               child: Text(
-                slotName,
+                displayLabel,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: isFrontPage ? 13 : 16,
                   fontWeight: FontWeight.bold,
+                  height: 1.1,
                   color: (isSelected || isUploaded)
                       ? Colors.white
-                      : Color.fromARGB(255, 68, 76, 231),
+                      : const Color.fromARGB(255, 68, 76, 231),
                 ),
               ),
             ),

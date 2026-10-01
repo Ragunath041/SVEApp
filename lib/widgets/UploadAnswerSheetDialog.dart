@@ -1,3 +1,5 @@
+// ignore_for_file: file_names, duplicate_ignore, deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supervisorapp/Services/ExamDetailsService.dart';
@@ -490,48 +492,6 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
         Navigator.pop(context);
       }
     }
-
-    if (!mounted) return;
-
-    // Show popup notice before opening upload page
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.info_outline, color: Color(0xFF444CE7), size: 24),
-            SizedBox(width: 8),
-            Text(
-              "Important Notice",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-          ],
-        ),
-        content: const Text(
-          "Please Click Submit All button once you capture and upload the required questions you want to upload",
-          style: TextStyle(fontSize: 15, height: 1.4),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF444CE7),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              "OK",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
 
     if (!mounted) return;
 

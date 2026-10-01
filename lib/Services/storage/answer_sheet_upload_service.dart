@@ -152,7 +152,11 @@ class AnswerSheetUploadService {
                             pw.Text('Student: $studentId'),
                           pw.Text('Course: $courseCode'),
                           pw.Text('Images: ${imagePaths.length}'),
-                          pw.Text("Uploaded By: Supervisor"),
+                          pw.Text(
+                            supervisorId != 'unknown_supervisor'
+                                ? 'Submitted By: Supervisor ($supervisorId)'
+                                : 'Submitted By: Supervisor',
+                          ),
                           pw.Text(
                             'Generated: ${DateFormat('dd/MM/yyyy HH:mm:ss').format(now)}',
                           ),

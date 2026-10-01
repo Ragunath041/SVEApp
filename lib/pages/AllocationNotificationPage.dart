@@ -312,7 +312,7 @@ class _AllocationNotificationPageState
           ClipRRect(
             borderRadius: BorderRadius.circular(6 * s),
             child: Image.asset(
-              'assets/images/company_logo.webp',
+              'assets/images/company_logo.png',
               width: 30 * s,
               height: 30 * s,
               fit: BoxFit.cover,
