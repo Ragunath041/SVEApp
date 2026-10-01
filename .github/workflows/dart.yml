@@ -23,6 +23,11 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Clean CocoaPods cache
+        run: |
+          rm -rf ~/.cocoapods
+          pod setup
+
       - name: Build iOS
         run: |
           flutter build ios --release --no-codesign
