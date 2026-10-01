@@ -24,9 +24,8 @@ class _AllocationNotification {
     required this.date,
     required this.session,
     required this.room,
-    this.status = _AllocationStatus.pending,
-    this.expanded = false,
-  });
+  }) : status = _AllocationStatus.pending,
+       expanded = false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -313,7 +312,7 @@ class _AllocationNotificationPageState
           ClipRRect(
             borderRadius: BorderRadius.circular(6 * s),
             child: Image.asset(
-              'assets/images/company_logo.png',
+              'assets/images/company_logo.webp',
               width: 30 * s,
               height: 30 * s,
               fit: BoxFit.cover,
@@ -470,7 +469,11 @@ class _AllocationNotificationPageState
                   color: Color(0xFFEAF7EE),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.check_circle_rounded, color: _green, size: 32 * s),
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: _green,
+                  size: 32 * s,
+                ),
               ),
               SizedBox(height: 14 * s),
               Text(

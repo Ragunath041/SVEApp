@@ -54,6 +54,7 @@ TABLE_FINISHED = os.environ.get('TABLE_FINISHED', 'finishedTable')
 TABLE_REQUIREMENTS = os.environ.get('TABLE_REQUIREMENTS', 'bits-supervisor-requirement')
 TABLE_REQUESTS = os.environ.get('TABLE_REQUESTS', 'bits-supervisor-requests')
 TABLE_SUPERVISOR_CONFIRMATION = os.environ.get('TABLE_SUPERVISOR_CONFIRMATION', 'Bits-Supervisor-Confirmation')
+TABLE_SUPERPROCTOR_CODE = os.environ.get('TABLE_SUPERPROCTOR_CODE', 'Bits-superproctor_code')
 
 # S3 Client configured for SigV4 pre-signing
 s3_client = boto3.client(
@@ -264,6 +265,13 @@ def lambda_handler(event, context):
         if action == 'countViolations' or '/violations/count' in path:
             return handle_count_violations(merged_params)
 
+        # ── Super Proctor Code ──
+        if action in ('saveSuperProctorCode', 'save_superproctor_code', 'submitSuperProctorCode') or '/superproctor/save' in path:
+            return handle_save_superproctor_code(merged_params)
+
+        if action in ('getSuperProctorCode', 'get_superproctor_code', 'verifySuperProctorCode') or '/superproctor/get' in path or '/superproctor/verify' in path:
+            return handle_get_superproctor_code(merged_params)
+
         return build_response(400, {
             'success': False,
             'error': f'Unsupported action: "{action}" or path: "{path}".'
@@ -306,9 +314,13 @@ def handle_presigned_upload(params):
         student_id = str(meta.get('studentId', '')).strip().lower()
         exam_date = str(meta.get('date', '')).strip()
         course_code = str(meta.get('courseCode', '')).strip().upper()
-        slot = str(meta.get('slot', 'Q1')).strip().upper()
-        if not slot.startswith('Q'):
-            slot = f"Q{slot}"
+        slot_raw = str(meta.get('slot', 'Q1')).strip()
+        if 'FRONT' in slot_raw.upper():
+            slot = 'FrontPage'
+        elif not slot_raw.upper().startswith('Q'):
+            slot = f"Q{slot_raw.upper()}"
+        else:
+            slot = slot_raw.upper()
 
         if not all([student_id, exam_date, course_code]):
             return build_response(400, {'success': False, 'error': 'Missing studentId, date, or courseCode'})
@@ -380,6 +392,11 @@ def handle_presigned_upload(params):
 
     # Optional custom S3 object metadata (e.g. {'pages': '2'})
     custom_metadata = meta.get('s3Metadata') or {}
+    if not isinstance(custom_metadata, dict):
+        custom_metadata = {}
+    raw_pages = meta.get('pageCount') or meta.get('pages')
+    if raw_pages is not None and str(raw_pages).strip() and 'pages' not in custom_metadata:
+        custom_metadata['pages'] = str(raw_pages).strip()
 
     put_params = {
         'Bucket': bucket,
@@ -752,43 +769,43 @@ def handle_supervisor_checkin(payload):
 def handle_save_student_attendance(payload):
     """
     Saves student exam attendance in bits-attendance-details.
-    Matches exact schema from DynamoDBAttendanceService.saveLoginRecord():
+    Matches exact schema from DynamoDBAttendanceService.saveLoginRecord() and getStudentExamData.py:
       - Partition Key: 'bitsId'
       - Sort Key: 'attendanceId'
     """
-    bits_id = str(payload.get('bitsId', '')).strip().lower()
+    bits_id = str(payload.get('bitsId', '')).strip()
+    if not bits_id:
+        return build_response(400, {'success': False, 'error': 'bitsId is required'})
+
     course_code = str(payload.get('courseCode', '')).strip().upper().replace(' ', '')
     exam_date = str(payload.get('examDate', '')).strip()
-    center = str(payload.get('center') or payload.get('centre', '')).strip()
-
-    if not all([bits_id, course_code, exam_date, center]):
-        return build_response(400, {'success': False, 'error': 'Missing required student attendance fields'})
+    center = str(payload.get('center') or payload.get('centre') or payload.get('Center', '')).strip()
 
     now = datetime.now(timezone.utc)
-    epoch_ms = int(now.timestamp() * 1000)
-    attendance_id = payload.get('attendanceId') or f"{bits_id}_{epoch_ms}"
-
-    lat = Decimal(str(payload.get('latitude', 0.0)))
-    lng = Decimal(str(payload.get('longitude', 0.0)))
+    epoch_ms = payload.get('timestamp') or int(now.timestamp() * 1000)
+    attendance_id = payload.get('attendanceId') or f"{bits_id.lower()}_{epoch_ms}"
+    total_q = int(payload.get('totalQuestions') or payload.get('noOfQuestionsPending', 0))
 
     table = dynamodb.Table(TABLE_STUDENT_ATTENDANCE)
 
     item = {
-        'bitsId': bits_id,
+        'bitsId': bits_id.lower(),
         'attendanceId': attendance_id,
         'loginDate': payload.get('loginDate') or now.strftime('%Y-%m-%d'),
         'loginTime': payload.get('loginTime') or now.strftime('%H:%M:%S'),
-        'latitude': lat,
-        'longitude': lng,
-        'timestamp': epoch_ms,
+        'latitude': str(payload.get('latitude', 0.0)),
+        'longitude': str(payload.get('longitude', 0.0)),
+        'timestamp': int(epoch_ms),
         'finished': payload.get('finished', '00:00:00'),
-        'noOfQuestionsPending': int(payload.get('noOfQuestionsPending', 0)),
+        'noOfQuestionsPending': total_q,
+        'totalQuestions': total_q,
         'courseCode': course_code,
         'examDate': exam_date,
         'examStartTime': payload.get('examStartTime', ''),
         'examEndTime': payload.get('examEndTime', ''),
         'sessionType': str(payload.get('sessionType', 'FN')).strip().upper(),
         'Center': center,
+        'center': center,
         'uploadStartTime': payload.get('uploadStartTime') or now.strftime('%H:%M:%S')
     }
 
@@ -798,6 +815,175 @@ def handle_save_student_attendance(payload):
         'message': 'Student attendance saved successfully',
         'attendanceId': attendance_id
     })
+
+
+def handle_save_superproctor_code(payload):
+    """
+    Saves generated Super Proctor Code in Bits-superproctor_code DynamoDB table.
+    Stores only the required clean attributes:
+    - superproctor_code
+    - center
+    - created_at
+    - date
+    - exam_start
+    - exam_end
+    - latitude
+    - longitude
+    - session
+    - supervisorId
+    - timestamp
+    """
+    try:
+        code = str(
+            payload.get('superproctor_code') or
+            payload.get('code') or
+            payload.get('superProctorCode') or
+            payload.get('id') or ''
+        ).strip()
+        supervisor_id = str(
+            payload.get('supervisorId') or
+            payload.get('supervisor_id') or
+            payload.get('supervisorID') or ''
+        ).strip()
+        center = str(
+            payload.get('center') or
+            payload.get('centre') or
+            payload.get('examHall') or
+            payload.get('Exam hall') or ''
+        ).strip()
+        session = str(payload.get('session') or '').strip().upper()
+        date_str = str(payload.get('date') or payload.get('displayDate') or '').strip()
+        exam_start = str(payload.get('exam_start') or payload.get('examStartTime') or '').strip()
+        exam_end = str(payload.get('exam_end') or payload.get('examEndTime') or '').strip()
+        latitude = payload.get('latitude')
+        longitude = payload.get('longitude')
+
+        if not code:
+            return build_response(400, {'success': False, 'error': 'Missing super proctor code'})
+
+        # If exam_start / exam_end not provided in payload, fetch from TABLE_CENTER_TIMINGS
+        if center and session and (not exam_start or not exam_end):
+            try:
+                timings_table = dynamodb.Table(TABLE_CENTER_TIMINGS)
+                tres = timings_table.get_item(Key={'exam-hall': center})
+                titem = tres.get('Item')
+                if titem:
+                    exam_start = exam_start or str(titem.get(f'{session}_start') or titem.get(f'{session} Start') or '')
+                    exam_end = exam_end or str(titem.get(f'{session}_end') or titem.get(f'{session} End') or '')
+            except Exception as te:
+                print(f" [SuperProctor] Timings lookup fallback error: {te}")
+
+        table = dynamodb.Table(TABLE_SUPERPROCTOR_CODE)
+        now_dt = datetime.now()
+
+        item = {
+            'superproctor_code': code,
+            'center': center,
+            'created_at': now_dt.isoformat(),
+            'date': date_str,
+            'exam_start': exam_start,
+            'exam_end': exam_end,
+            'session': session,
+            'supervisorId': supervisor_id,
+            'timestamp': int(now_dt.timestamp())
+        }
+
+        if latitude is not None:
+            try:
+                item['latitude'] = Decimal(str(latitude))
+            except Exception:
+                item['latitude'] = str(latitude)
+
+        if longitude is not None:
+            try:
+                item['longitude'] = Decimal(str(longitude))
+            except Exception:
+                item['longitude'] = str(longitude)
+
+        table.put_item(Item=item)
+        print(f" [SuperProctor] Successfully saved clean Super Proctor Code: {code} into {TABLE_SUPERPROCTOR_CODE}")
+        return build_response(200, {
+            'success': True,
+            'message': 'Super Proctor Code saved successfully',
+            'code': code
+        })
+    except Exception as e:
+        print(f" [SuperProctor] Error saving Super Proctor Code: {e}")
+        return build_response(500, {'success': False, 'error': str(e)})
+
+
+def handle_get_superproctor_code(payload):
+    """
+    Retrieves or verifies a Super Proctor Code from Bits-superproctor_code DynamoDB table.
+    Supports lookup by code or by centre / session / date / supervisorId.
+    """
+    try:
+        code = str(
+            payload.get('code') or
+            payload.get('superproctor_code') or
+            payload.get('superProctorCode') or ''
+        ).strip()
+        table = dynamodb.Table(TABLE_SUPERPROCTOR_CODE)
+
+        if code:
+            # 1. Try Key={'superproctor_code': code}
+            try:
+                res = table.get_item(Key={'superproctor_code': code})
+                if res.get('Item'):
+                    return build_response(200, {'success': True, 'found': True, 'data': res['Item']})
+            except Exception:
+                pass
+
+            # 2. Try Key={'code': code}
+            try:
+                res = table.get_item(Key={'code': code})
+                if res.get('Item'):
+                    return build_response(200, {'success': True, 'found': True, 'data': res['Item']})
+            except Exception:
+                pass
+
+            # 3. Scan fallback
+            scan_res = table.scan(
+                FilterExpression=Attr('code').eq(code) | Attr('superproctor_code').eq(code)
+            )
+            items = scan_res.get('Items', [])
+            if items:
+                return build_response(200, {'success': True, 'found': True, 'data': items[0]})
+
+            return build_response(200, {'success': True, 'found': False, 'data': None})
+
+        centre = str(payload.get('centre') or payload.get('center') or '').strip()
+        session = str(payload.get('session') or '').strip().upper()
+        date_str = str(payload.get('date') or payload.get('displayDate') or '').strip()
+        supervisor_id = str(payload.get('supervisorId') or payload.get('supervisor_id') or '').strip()
+
+        if centre:
+            filter_exp = Attr('centre').eq(centre) | Attr('center').eq(centre)
+            if session:
+                filter_exp = filter_exp & Attr('session').eq(session)
+            if date_str:
+                filter_exp = filter_exp & (Attr('date').eq(date_str) | Attr('dateDigits').eq(date_str))
+            if supervisor_id:
+                filter_exp = filter_exp & (Attr('supervisorId').eq(supervisor_id) | Attr('supervisor_id').eq(supervisor_id))
+
+            scan_res = table.scan(FilterExpression=filter_exp)
+            items = scan_res.get('Items', [])
+            if items:
+                items.sort(key=lambda x: str(x.get('timestamp') or x.get('created_at') or ''), reverse=True)
+                return build_response(200, {
+                    'success': True,
+                    'found': True,
+                    'count': len(items),
+                    'data': items[0],
+                    'items': items
+                })
+
+            return build_response(200, {'success': True, 'found': False, 'count': 0, 'data': None})
+
+        return build_response(400, {'success': False, 'error': 'Missing code or centre to query'})
+    except Exception as e:
+        print(f" [SuperProctor] Error fetching Super Proctor Code: {e}")
+        return build_response(500, {'success': False, 'error': str(e)})
 
 
 def handle_mark_incident_attendance(payload):
@@ -842,18 +1028,32 @@ def handle_update_finished_time(payload):
     """Updates finished column in bits-attendance-details when student completes exam."""
     bits_id = str(payload.get('bitsId', '')).strip().lower()
     attendance_id = str(payload.get('attendanceId', '')).strip()
-    finished_time = str(payload.get('finishedTime', '')).strip()
+    finished_time = str(payload.get('finishedTime') or payload.get('finished', '')).strip()
+    if not finished_time:
+        finished_time = datetime.now().strftime('%H:%M:%S')
 
-    if not all([bits_id, attendance_id, finished_time]):
-        return build_response(400, {'success': False, 'error': 'Missing bitsId, attendanceId, or finishedTime'})
+    if not all([bits_id, attendance_id]):
+        return build_response(400, {'success': False, 'error': 'Missing bitsId or attendanceId'})
 
     table = dynamodb.Table(TABLE_STUDENT_ATTENDANCE)
-    table.update_item(
-        Key={'bitsId': bits_id, 'attendanceId': attendance_id},
-        UpdateExpression='SET finished = :finishedTime',
-        ExpressionAttributeValues={':finishedTime': finished_time}
-    )
-    return build_response(200, {'success': True, 'message': 'Finished time updated'})
+    try:
+        table.update_item(
+            Key={'bitsId': bits_id, 'attendanceId': attendance_id},
+            UpdateExpression='SET finished = :finishedTime',
+            ExpressionAttributeValues={':finishedTime': finished_time}
+        )
+    except Exception as e:
+        # Fallback if bitsId casing differs in table
+        try:
+            table.update_item(
+                Key={'bitsId': bits_id.upper(), 'attendanceId': attendance_id},
+                UpdateExpression='SET finished = :finishedTime',
+                ExpressionAttributeValues={':finishedTime': finished_time}
+            )
+        except Exception:
+            raise e
+
+    return build_response(200, {'success': True, 'message': 'Finished time updated', 'finished': finished_time})
 
 
 def handle_decrement_questions(payload):
@@ -880,26 +1080,67 @@ def handle_decrement_questions(payload):
 
 def handle_get_existing_attendance(payload):
     """Queries bits-attendance-details to see if attendance already exists for session."""
-    bits_id = str(payload.get('bitsId', '')).strip().lower()
-    course_code = str(payload.get('courseCode', '')).strip().upper().replace(' ', '')
+    bits_id = str(payload.get('bitsId', '')).strip()
+    course_code = str(payload.get('courseCode', '')).strip()
     exam_date = str(payload.get('examDate', '')).strip()
-    session_type = payload.get('sessionType')
+    session_type = str(payload.get('sessionType', '')).strip().upper()
 
-    if not all([bits_id, course_code, exam_date]):
-        return build_response(400, {'success': False, 'error': 'Missing bitsId, courseCode, or examDate'})
+    if not bits_id:
+        return build_response(400, {'success': False, 'error': 'Missing bitsId'})
 
     table = dynamodb.Table(TABLE_STUDENT_ATTENDANCE)
-    filter_expr = Attr('courseCode').eq(course_code) & Attr('examDate').eq(exam_date)
-    if session_type:
-        filter_expr = filter_expr & Attr('sessionType').eq(session_type.strip().upper())
 
-    res = table.query(
-        KeyConditionExpression=Key('bitsId').eq(bits_id),
-        FilterExpression=filter_expr
-    )
-    items = res.get('Items', [])
-    if items:
-        return build_response(200, {'success': True, 'attendanceId': items[0]['attendanceId'], 'data': items[0]})
+    candidates = [bits_id]
+    if bits_id.lower() not in candidates:
+        candidates.append(bits_id.lower())
+    if bits_id.upper() not in candidates:
+        candidates.append(bits_id.upper())
+
+    clean_course = course_code.upper().replace(' ', '').split('-')[0]
+
+    def normalize_d(d):
+        if not d:
+            return ""
+        parts = d.strip().replace('/', '-').split('-')
+        if len(parts) == 3:
+            if len(parts[0]) == 4:
+                return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+            elif len(parts[2]) == 4:
+                return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        return d.strip()
+
+    target_date = normalize_d(exam_date)
+
+    matched_item = None
+    for b_id in candidates:
+        try:
+            res = table.query(KeyConditionExpression=Key('bitsId').eq(b_id))
+            items = res.get('Items', [])
+            for item in items:
+                item_course = str(item.get('courseCode', '')).strip().upper().replace(' ', '').split('-')[0]
+                course_matches = (not clean_course) or (clean_course in item_course) or (item_course in clean_course)
+
+                item_date = normalize_d(str(item.get('examDate') or item.get('loginDate') or ''))
+                date_matches = (not target_date) or (item_date == target_date)
+
+                item_session = str(item.get('sessionType', '')).strip().upper()
+                session_matches = (not session_type) or (item_session == session_type)
+
+                if course_matches and date_matches and session_matches:
+                    matched_item = item
+                    break
+            if matched_item:
+                break
+        except Exception as e:
+            logger.warning(f"Error querying attendance for {b_id}: {e}")
+
+    if matched_item:
+        return build_response(200, {
+            'success': True,
+            'attendanceId': matched_item.get('attendanceId'),
+            'data': matched_item
+        })
+
     return build_response(200, {'success': True, 'attendanceId': None})
 
 
@@ -951,23 +1192,25 @@ def handle_init_finished_record(payload):
 
 
 def handle_update_finished_question(payload):
-    """Updates a specific question column (e.g. question1..question15) in finishedTable."""
+    """Updates a specific question column (only question1..15) in finishedTable."""
     bits_id = str(payload.get('bitsId', '')).strip().lower()
     attendance_id = str(payload.get('attendanceId', '')).strip()
     question_num = int(payload.get('questionNumber', 0))
-    val = str(payload.get('value', '')).strip()
+    val = str(payload.get('value', payload.get('displayValue', ''))).strip()
 
     if not all([bits_id, attendance_id]) or question_num < 1 or question_num > 15:
         return build_response(400, {'success': False, 'error': 'Invalid parameters'})
 
     table = dynamodb.Table(TABLE_FINISHED)
-    q_col = f"question{question_num}"
     table.update_item(
         Key={'bitsId': bits_id, 'attendanceId': attendance_id},
-        UpdateExpression=f'SET {q_col} = :val',
+        UpdateExpression='SET #q_full = :val',
+        ExpressionAttributeNames={
+            '#q_full': f'question{question_num}'
+        },
         ExpressionAttributeValues={':val': val}
     )
-    return build_response(200, {'success': True, 'message': f'{q_col} updated'})
+    return build_response(200, {'success': True, 'message': f'question{question_num} updated'})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2084,17 +2327,28 @@ def handle_student_exam_details(student_id):
 def handle_course_name_lookup(params):
     """Looks up course name for a given course code in ExamDetails.csv."""
     try:
-        course_code = params.get('courseCode', '').strip().upper()
+        raw_code = params.get('courseCode', '').strip().upper()
+        # Normalize: remove all spaces for comparison
+        normalized_query = raw_code.replace(' ', '')
+
         data = s3_client.get_object(Bucket=BUCKET_EXAM_APP, Key='exam_details/ExamDetails.csv')['Body'].read().decode('utf-8')
         reader = csv.reader(StringIO(data))
         headers = [h.strip().upper() for h in next(reader)]
         cc_col = next((i for i, h in enumerate(headers) if 'COURSECODE' in h.replace(' ','')), None)
         cn_col = next((i for i, h in enumerate(headers) if 'COURSENAME' in h.replace(' ','')), None)
-        
+
+        if cc_col is None or cn_col is None:
+            return build_response(500, {'success': False, 'error': 'CSV header mismatch: missing CourseCode or CourseName column'})
+
         for row in reader:
-            if len(row) > max(cc_col, cn_col) and row[cc_col].strip().upper() == course_code:
-                return build_response(200, {'success': True, 'courseName': row[cn_col].strip()})
-        return build_response(404, {'success': False, 'error': 'Course not found'})
+            if len(row) > max(cc_col, cn_col):
+                row_code = row[cc_col].strip().upper().replace(' ', '')
+                if row_code == normalized_query:
+                    course_name = row[cn_col].strip()
+                    if course_name:
+                        return build_response(200, {'success': True, 'courseName': course_name})
+
+        return build_response(404, {'success': False, 'error': f'Course "{raw_code}" not found in ExamDetails.csv'})
     except Exception as e:
         return build_response(500, {'success': False, 'error': str(e)})
 

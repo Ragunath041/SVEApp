@@ -5,16 +5,22 @@
 -keep class io.flutter.view.**  { *; }
 -keep class io.flutter.**  { *; }
 -keep class io.flutter.plugins.**  { *; }
+-dontwarn io.flutter.embedding.**
+
+## Google Play Core / Split install
+-dontwarn com.google.android.play.core.**
 
 ## TensorFlow Lite
 -keep class org.tensorflow.lite.** { *; }
 -keep interface org.tensorflow.lite.** { *; }
 -keep class org.tensorflow.lite.gpu.** { *; }
 -keep interface org.tensorflow.lite.gpu.** { *; }
+-dontwarn org.tensorflow.lite.**
 
 ## Google ML Kit
 -keep class com.google.mlkit.** { *; }
 -keep interface com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
 
 ## Camera
 -keep class androidx.camera.** { *; }

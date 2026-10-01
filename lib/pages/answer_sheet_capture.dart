@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/pages/ImageCropperPage.dart';
-import 'package:image_picker/image_picker.dart';
 
 class AnswerSheetCaptureFlow extends StatefulWidget {
   final String studentId;
@@ -13,6 +13,8 @@ class AnswerSheetCaptureFlow extends StatefulWidget {
   final String centreName;
   final String courseCode;
   final List<String>? existingImages;
+  final bool singlePageOnly;
+  final String? slotName;
 
   const AnswerSheetCaptureFlow({
     Key? key,
@@ -21,6 +23,8 @@ class AnswerSheetCaptureFlow extends StatefulWidget {
     required this.centreName,
     required this.courseCode,
     this.existingImages,
+    this.singlePageOnly = false,
+    this.slotName,
   }) : super(key: key);
 
   @override
@@ -48,6 +52,7 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
               studentName: widget.studentName,
               centreName: widget.centreName,
               courseCode: widget.courseCode,
+              singlePageOnly: widget.singlePageOnly,
             ),
           ),
         );
@@ -56,81 +61,10 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
           Navigator.pop(context, result);
         }
       } else {
-        // Otherwise show regular start dialog
-        _showStartCaptureDialog();
+        // Open camera directly without showing any popup dialog
+        _openCamera();
       }
     });
-  }
-
-  void _showStartCaptureDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.camera_alt,
-                  size: 64,
-                  color: Color.fromARGB(255, 68, 76, 231),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  "Capture Answer Sheet",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  "Tap the button below to photograph the student's answer sheet pages.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                ),
-                SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _openCamera();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color.fromARGB(255, 68, 76, 231),
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      "Start Camera",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).pop();
-                  },
-                  child: Text("Cancel"),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Future<void> _openCamera() async {
@@ -144,9 +78,12 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
             backgroundColor: Colors.red.shade600,
           ),
         );
+        if (!mounted) return;
         Navigator.of(context).pop();
         return;
       }
+
+      if (!mounted) return;
 
       final result = await Navigator.push(
         context,
@@ -255,10 +192,7 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
                           );
 
                           if (croppedResult != null && croppedResult is XFile) {
-                            // Replace original image with cropped one
-                            // We don't delete original yet in case user wants both?
-                            // Actually usually you want the cropped one.
-                            // The cropper returns a new path in temp dir.
+                            if (!dialogContext.mounted) return;
                             Navigator.of(
                               dialogContext,
                             ).pop(); // Close current dialog
@@ -298,6 +232,14 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
                         onPressed: () async {
                           Navigator.of(dialogContext).pop(); // Close dialog
 
+                          if (widget.singlePageOnly) {
+                            // Immediately return single image (e.g. Front Page) without asking Add More
+                            if (mounted) {
+                              Navigator.of(widgetContext).pop([imagePath]);
+                            }
+                            return;
+                          }
+
                           print(' Done button clicked.');
                           print(
                             ' widget.existingImages: ${widget.existingImages}',
@@ -335,16 +277,17 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
                                     studentName: widget.studentName,
                                     centreName: widget.centreName,
                                     courseCode: widget.courseCode,
+                                    singlePageOnly: widget.singlePageOnly,
                                   ),
                             ),
                           );
 
-                          print(' Image Selection returned: $result');
-                          print(' Result length: ${result?.length ?? 'null'}');
+                          debugPrint(' Image Selection returned: $result');
+                          debugPrint(' Result length: ${result?.length ?? 'null'}');
 
                           // Return the result to UploadPage using the widget's context
-                          if (result != null && mounted) {
-                            print(
+                          if (result != null && mounted && widgetContext.mounted) {
+                            debugPrint(
                               ' Popping AnswerSheetCaptureFlow with ${result.length} images',
                             );
                             Navigator.of(widgetContext).pop(result);
@@ -447,9 +390,10 @@ class _AnswerSheetCameraScreenState extends State<AnswerSheetCameraScreen> {
       final image = await _controller.takePicture();
       await File(image.path).copy(imagePath);
 
+      if (!mounted) return;
       Navigator.pop(context, imagePath);
     } catch (e) {
-      print('Error taking picture: $e');
+      debugPrint('Error taking picture: $e');
     }
   }
 
@@ -509,6 +453,7 @@ class AnswerSheetImageSelectionPage extends StatefulWidget {
   final String studentName;
   final String centreName;
   final String courseCode;
+  final bool singlePageOnly;
 
   const AnswerSheetImageSelectionPage({
     Key? key,
@@ -517,6 +462,7 @@ class AnswerSheetImageSelectionPage extends StatefulWidget {
     required this.studentName,
     required this.centreName,
     required this.courseCode,
+    this.singlePageOnly = false,
   }) : super(key: key);
 
   @override
@@ -603,6 +549,7 @@ class _AnswerSheetImageSelectionPageState
                           );
 
                           if (croppedResult != null && croppedResult is XFile) {
+                            if (!dialogContext.mounted) return;
                             Navigator.of(
                               dialogContext,
                             ).pop(); // Close current dialog
@@ -675,6 +622,7 @@ class _AnswerSheetImageSelectionPageState
   Future<void> _addMoreImages() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
+    if (!mounted) return;
 
     final result = await Navigator.push(
       context,
@@ -942,32 +890,33 @@ class _AnswerSheetImageSelectionPageState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Add More Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _addMoreImages,
-                    icon: Icon(Icons.add_a_photo, size: 18),
-                    label: Text(
-                      "Add More",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                // Add More Button (hidden if singlePageOnly is true)
+                if (!widget.singlePageOnly) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _addMoreImages,
+                      icon: Icon(Icons.add_a_photo, size: 18),
+                      label: Text(
+                        "Add More",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
                       ),
-                      elevation: 0,
                     ),
                   ),
-                ),
-
-                SizedBox(height: 12),
+                  SizedBox(height: 12),
+                ],
 
                 // Done Button
                 SizedBox(

@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supervisorapp/Services/attendance/student_attendance_service.dart';
 import 'package:supervisorapp/Services/exam/exam_progress_service.dart';
 import 'package:supervisorapp/pages/ImageCropperPage.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 
 class UploadPage extends StatefulWidget {
   final String studentId;
@@ -250,10 +250,12 @@ class _UploadPageState extends State<UploadPage> {
                                         croppedResult.path;
                                   });
                                   _saveCapturedImages();
-                                  Navigator.of(
-                                    dialogContext,
-                                  ).pop(); // Briefly close to refresh
-                                  _showImagesDialog(); // Re-open to show updated image
+                                  if (dialogContext.mounted) {
+                                    Navigator.of(
+                                      dialogContext,
+                                    ).pop(); // Briefly close to refresh
+                                    _showImagesDialog(); // Re-open to show updated image
+                                  }
                                 }
                               },
                               child: Container(
@@ -398,7 +400,7 @@ class _UploadPageState extends State<UploadPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,
@@ -1078,47 +1080,51 @@ class _UploadPageState extends State<UploadPage> {
                                     .where((v) => v == true)
                                     .length;
                                 // Close loading dialog on success
-                                if (mounted) Navigator.pop(context);
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      "$uploadedSlot uploaded successfully ($uploadedCount/${_questionSlots.length} completed)",
+                                if (mounted) {
+                                  Navigator.of(this.context).pop();
+                                  ScaffoldMessenger.of(this.context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "$uploadedSlot uploaded successfully ($uploadedCount/${_questionSlots.length} completed)",
+                                      ),
+                                      backgroundColor: Colors.green,
+                                      duration: const Duration(seconds: 2),
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.all(16),
                                     ),
-                                    backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 2),
-                                    behavior: SnackBarBehavior.floating,
-                                    margin: const EdgeInsets.all(16),
-                                  ),
-                                );
+                                  );
+                                }
                               } else {
                                 // Close loading dialog on failure
-                                if (mounted) Navigator.pop(context);
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      "Upload failed: ${result['error'] ?? 'Please check your connection and try again.'}",
+                                if (mounted) {
+                                  Navigator.of(this.context).pop();
+                                  ScaffoldMessenger.of(this.context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Upload failed: ${result['error'] ?? 'Please check your connection and try again.'}",
+                                      ),
+                                      backgroundColor: Colors.red,
+                                      behavior: SnackBarBehavior.floating,
+                                      margin: const EdgeInsets.all(16),
                                     ),
-                                    backgroundColor: Colors.red,
-                                    behavior: SnackBarBehavior.floating,
-                                    margin: const EdgeInsets.all(16),
-                                  ),
-                                );
+                                  );
+                                }
                               }
                             } catch (e) {
                               // Close loading dialog if still open
-                              if (mounted) Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Upload failed. Please check your connection and try again.",
+                              if (mounted) {
+                                Navigator.of(this.context).pop();
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Upload failed. Please check your connection and try again.",
+                                    ),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: EdgeInsets.all(16),
                                   ),
-                                  backgroundColor: Colors.red,
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: EdgeInsets.all(16),
-                                ),
-                              );
+                                );
+                              }
                             }
                           },
                     icon: Icon(Icons.upload_file, size: 18),
@@ -1476,7 +1482,7 @@ class _UploadPageState extends State<UploadPage> {
       }
     }
 
-    Navigator.pop(context); // Go back to student selection
+    if (mounted) Navigator.pop(context); // Go back to student selection
   }
 
   // Build individual question button

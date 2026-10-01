@@ -7,7 +7,7 @@ import 'package:supervisorapp/Services/FaceRecognitionService.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FaceCamera.initialize();
-  await FlutterScreenshotBlocker.enableScreenshotBlocking();
+  await FlutterScreenshotBlocker.disableScreenshotBlocking();
 
   FaceRecognitionServiceEnhanced.initialize().catchError((e) {
     debugPrint('Pre-initialization error: $e');

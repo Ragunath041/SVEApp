@@ -96,9 +96,17 @@ class AnswerSheetUploadService {
           );
 
           final pdf = pw.Document();
-          final questionTitle = slot.startsWith('Q')
-              ? 'Question $slot'
-              : 'Question Q$slot';
+          final isFrontPage = slot
+              .toLowerCase()
+              .replaceAll(' ', '')
+              .contains('front');
+          final String questionTitle;
+          if (isFrontPage) {
+            questionTitle = 'Front Page';
+          } else {
+            final upper = slot.trim().toUpperCase();
+            questionTitle = upper.startsWith('Q') ? upper : 'Q$upper';
+          }
 
           // 1. Add Question Header Cover Page (matching Exam App design)
           pdf.addPage(
@@ -135,7 +143,7 @@ class AnswerSheetUploadService {
                             ),
                           ),
                           pw.SizedBox(height: 10),
-                          pw.Text('Question ID: $slot'),
+                          pw.Text('Question ID: $questionTitle'),
                           if (studentName != null && studentName.isNotEmpty)
                             pw.Text(
                               'Student: $studentName ($studentId@wilp.bits-pilani.ac.in)',
@@ -236,14 +244,19 @@ class AnswerSheetUploadService {
           );
 
           // Upload via Pre-signed URL
+          final effectivePageCount = imagePaths.isNotEmpty
+              ? imagePaths.length
+              : 1;
           final uploadResult = await S3Uploader.requestUrlAndUpload(
             uploadType: 'answer_sheet',
             metadata: {
               'studentId': studentId.toLowerCase(),
               'date': dateStr,
               'courseCode': courseCode,
-              'slot': slot,
-              's3Metadata': {'pages': imagePaths.length.toString()},
+              'slot': isFrontPage ? 'FrontPage' : questionTitle,
+              'pageCount': effectivePageCount,
+              'pages': effectivePageCount.toString(),
+              's3Metadata': {'pages': effectivePageCount.toString()},
             },
             bytes: pdfBytes,
             contentType: 'application/pdf',

@@ -5,8 +5,9 @@ import '../../core/network/api_client.dart';
 /// Handles student exam attendance recording, pending questions decrement,
 /// incident marking, and session attendance lookups.
 class StudentAttendanceService {
-  /// Save student login/attendance record via backend API
-  static Future<bool> saveLoginRecord({
+  /// Save student login/attendance record via backend API.
+  /// Returns the saved attendanceId on success, or null on failure.
+  static Future<String?> saveLoginRecord({
     required String bitsId,
     required double latitude,
     required double longitude,
@@ -21,10 +22,12 @@ class StudentAttendanceService {
     String? uploadStartTime,
   }) async {
     try {
-      debugPrint(' [StudentAttendanceService] Saving student attendance for $bitsId');
+      debugPrint(
+        ' [StudentAttendanceService] Saving student attendance for $bitsId ($courseCode)',
+      );
 
       final attendanceId =
-          '${bitsId.toLowerCase()}_${loginTime.millisecondsSinceEpoch}';
+          '${bitsId.trim().toLowerCase()}_${loginTime.millisecondsSinceEpoch}';
 
       final response = await ApiClient.sendAction(
         action: 'saveStudentAttendance',
@@ -38,12 +41,14 @@ class StudentAttendanceService {
           'timestamp': loginTime.millisecondsSinceEpoch,
           'finished': '00:00:00',
           'noOfQuestionsPending': noOfQuestionsPending,
+          'totalQuestions': noOfQuestionsPending,
           'courseCode': courseCode.toUpperCase().replaceAll(' ', ''),
           'examDate': examDate.trim(),
           'examStartTime': _formatTimeForDB(examStartTime),
           'examEndTime': _formatTimeForDB(examEndTime),
           'sessionType': sessionType.trim().toUpperCase(),
           'center': center.trim(),
+          'Center': center.trim(),
           'uploadStartTime':
               uploadStartTime ?? DateFormat('HH:mm:ss').format(loginTime),
         },
@@ -51,14 +56,23 @@ class StudentAttendanceService {
 
       final success = response['success'] == true;
       if (success) {
-        debugPrint(' [StudentAttendanceService] Student attendance saved successfully');
+        final confirmedId =
+            response['attendanceId']?.toString() ?? attendanceId;
+        debugPrint(
+          ' [StudentAttendanceService] Student attendance saved successfully: $confirmedId',
+        );
+        return confirmedId;
       } else {
-        debugPrint(' [StudentAttendanceService] Save failed: ${response['error']}');
+        debugPrint(
+          ' [StudentAttendanceService] Save failed: ${response['error']}',
+        );
+        return null;
       }
-      return success;
     } catch (e) {
-      debugPrint(' [StudentAttendanceService] Exception saving student attendance: $e');
-      return false;
+      debugPrint(
+        ' [StudentAttendanceService] Exception saving student attendance: $e',
+      );
+      return null;
     }
   }
 
@@ -70,7 +84,9 @@ class StudentAttendanceService {
   }) async {
     try {
       final finishStr = DateFormat('HH:mm:ss').format(finishedTime);
-      debugPrint(' [StudentAttendanceService] Updating finished time for $bitsId to $finishStr');
+      debugPrint(
+        ' [StudentAttendanceService] Updating finished time for $bitsId to $finishStr',
+      );
 
       final response = await ApiClient.sendAction(
         action: 'updateFinishedTime',
@@ -83,7 +99,9 @@ class StudentAttendanceService {
 
       return response['success'] == true;
     } catch (e) {
-      debugPrint(' [StudentAttendanceService] Exception updating finished time: $e');
+      debugPrint(
+        ' [StudentAttendanceService] Exception updating finished time: $e',
+      );
       return false;
     }
   }
@@ -106,7 +124,8 @@ class StudentAttendanceService {
           'bitsId': bitsId.trim().toLowerCase(),
           'courseCode': courseCode.trim().toUpperCase().replaceAll(' ', ''),
           'examDate': examDate.trim(),
-          if (session != null && session.isNotEmpty) 'session': session.trim().toUpperCase(),
+          if (session != null && session.isNotEmpty)
+            'session': session.trim().toUpperCase(),
         },
       );
 
@@ -123,7 +142,9 @@ class StudentAttendanceService {
     required String attendanceId,
   }) async {
     try {
-      debugPrint(' [StudentAttendanceService] Decrementing pending questions for $bitsId');
+      debugPrint(
+        ' [StudentAttendanceService] Decrementing pending questions for $bitsId',
+      );
 
       final response = await ApiClient.sendAction(
         action: 'decrementQuestionsPending',
@@ -135,7 +156,9 @@ class StudentAttendanceService {
 
       return response['success'] == true;
     } catch (e) {
-      debugPrint(' [StudentAttendanceService] Exception decrementing questions: $e');
+      debugPrint(
+        ' [StudentAttendanceService] Exception decrementing questions: $e',
+      );
       return false;
     }
   }
@@ -164,7 +187,9 @@ class StudentAttendanceService {
       }
       return null;
     } catch (e) {
-      debugPrint(' [StudentAttendanceService] Exception checking existing attendance: $e');
+      debugPrint(
+        ' [StudentAttendanceService] Exception checking existing attendance: $e',
+      );
       return null;
     }
   }
@@ -193,7 +218,9 @@ class StudentAttendanceService {
       }
       return null;
     } catch (e) {
-      debugPrint(' [StudentAttendanceService] Exception getting attendance record: $e');
+      debugPrint(
+        ' [StudentAttendanceService] Exception getting attendance record: $e',
+      );
       return null;
     }
   }

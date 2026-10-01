@@ -116,25 +116,25 @@ class _FrontPageState extends State<FrontPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(context); // Close dialog
+                final nav = Navigator.of(context);
+                nav.pop(); // Close dialog
 
-                if (mounted) {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) =>
-                        const Center(child: CircularProgressIndicator()),
-                  );
-                }
+                if (!mounted) return;
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) =>
+                      const Center(child: CircularProgressIndicator()),
+                );
 
                 await _storageService.clearAllRegistrationData();
 
+                if (!mounted) return;
+                nav.pop(); // Remove loading
+                await nav.push(
+                  MaterialPageRoute(builder: (context) => const Register()),
+                );
                 if (mounted) {
-                  Navigator.pop(context); // Remove loading
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const Register()),
-                  );
                   _checkForLocalData();
                 }
               },
@@ -163,7 +163,7 @@ class _FrontPageState extends State<FrontPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,

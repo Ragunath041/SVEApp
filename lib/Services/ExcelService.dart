@@ -1,6 +1,7 @@
+// ignore_for_file: avoid_print, file_names
+
 import 'dart:async';
 import 'dart:convert';
-import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import '../core/config/app_config.dart';
 
@@ -144,36 +145,6 @@ class ExcelService {
     }
   }
 
-  /// Pick an Excel file and extract student IDs from the "BITS Id" column
-  /// (Kept for backward compatibility, but not used in main flow)
-  static Future<List<String>> loadStudentIdsFromExcel() async {
-    try {
-      // Pick CSV file
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-      );
-
-      if (result == null || result.files.single.path == null) {
-        print(' No file selected');
-        return [];
-      }
-
-      final filePath = result.files.single.path!;
-      print(' Selected file: $filePath');
-
-      // Note: This method is kept for backward compatibility
-      // but is not recommended due to UI freezing issues
-      print(' Warning: Local Excel parsing may freeze the UI');
-      print(' Consider using loadStudentIdsFromS3() instead');
-
-      return [];
-    } catch (e) {
-      print(' Error reading Excel file: $e');
-      return [];
-    }
-  }
-
   /// Fetch all exams happening at a specific center for a given date
   static Future<List<Map<String, String>>> fetchCenterExams({
     required String centre,
@@ -252,7 +223,8 @@ class ExcelService {
       print(' Error getting attendance status: $e');
       return {
         'success': false,
-        'error': 'Failed to load attendance status. Please check your connection.',
+        'error':
+            'Failed to load attendance status. Please check your connection.',
       };
     }
   }

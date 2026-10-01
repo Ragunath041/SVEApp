@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 
@@ -50,8 +50,10 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
         scale = displayHeight / _rawImageSize.height;
       }
 
-      _imageDisplaySize =
-          Size(_rawImageSize.width * scale, _rawImageSize.height * scale);
+      _imageDisplaySize = Size(
+        _rawImageSize.width * scale,
+        _rawImageSize.height * scale,
+      );
 
       setState(() {
         // Default to full image (0 margin) as per user request
@@ -111,8 +113,10 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title:
-            const Text('Crop Document', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'Crop Document',
+          style: TextStyle(color: Colors.white),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.pop(context),
@@ -147,13 +151,21 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
                         ),
                         // Draggable handles
                         _buildHandle(
-                            tl, (newPos) => setState(() => tl = newPos)),
+                          tl,
+                          (newPos) => setState(() => tl = newPos),
+                        ),
                         _buildHandle(
-                            tr, (newPos) => setState(() => tr = newPos)),
+                          tr,
+                          (newPos) => setState(() => tr = newPos),
+                        ),
                         _buildHandle(
-                            bl, (newPos) => setState(() => bl = newPos)),
+                          bl,
+                          (newPos) => setState(() => bl = newPos),
+                        ),
                         _buildHandle(
-                            br, (newPos) => setState(() => br = newPos)),
+                          br,
+                          (newPos) => setState(() => br = newPos),
+                        ),
 
                         // Edge midpoints for easier adjustment
                         _buildHandle((tl + tr) / 2, (newPos) {

@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use, empty_catches, avoid_print
+
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -258,7 +260,9 @@ class _SplashScreenState extends State<SplashScreen>
               };
               break;
             }
-          } catch (e) {}
+          } catch (e) {
+            debugPrint('SplashScreen: Error parsing session timing: $e');
+          }
         }
 
         if (activeExam != null) {
@@ -269,6 +273,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       _navigateTo(const Login());
     } catch (e) {
+      debugPrint('SplashScreen: Error checking active sessions: $e');
       _navigateTo(const Login());
     }
   }
@@ -311,7 +316,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
-                  child: Image.asset('assets/images/company_logo.png'),
+                  child: Image.asset('assets/images/company_logo.webp'),
                 ),
               ),
 

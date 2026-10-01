@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/pages/answer_sheet_capture.dart';
 import 'package:supervisorapp/pages/ImageCropperPage.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supervisorapp/Services/StorageService.dart';
 
 class AttendanceReportUploadPage extends StatefulWidget {
@@ -42,6 +41,8 @@ class _AttendanceReportUploadPageState
         );
         return;
       }
+
+      if (!mounted) return;
 
       final result = await Navigator.push(
         context,

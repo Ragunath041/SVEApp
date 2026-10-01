@@ -31,9 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   google_fonts: ^6.3.3
   camera: ^0.11.0+2
   http: ^1.6.0
@@ -41,22 +38,17 @@ dependencies:
   path: ^1.8.3
   geolocator: ^14.0.2
   shared_preferences: ^2.3.0
-  excel: ^4.0.6
   intl: ^0.19.0
   csv: ^6.0.0
   pdf: ^3.11.3
-  file_picker: ^8.1.6
   tflite_flutter: ^0.11.0
   image: ^4.0.17
   google_mlkit_face_detection: ^0.12.0
-  crypto: ^3.0.3
   cryptography: 2.7.0
-  provider: ^6.1.5+1
   #Screenshot block
   flutter_screenshot_blocker: ^1.0.2
   face_camera:
     path: ./packages/face_camera
-  image_picker: ^1.2.1
   app_settings: ^7.0.0
   mobile_scanner: ^7.2.0
 
@@ -81,13 +73,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
   assets:
     - assets/models/mobilefacenet.tflite
-    - assets/images/
-    - assets/images/guide_perfect.png
-    - assets/images/fullperson.png
-    - assets/images/image.png
+    - assets/images/company_logo.webp
+    - assets/images/fullperson.webp
+    - assets/images/image.webp
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

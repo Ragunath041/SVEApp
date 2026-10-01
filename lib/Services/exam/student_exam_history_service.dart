@@ -44,7 +44,9 @@ class StudentExamHistoryService {
                   examDate.minute,
                   examDate.second,
                 );
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('StudentExamHistoryService: Error parsing dateStr $dateStr: $e');
+              }
             }
 
             exams.add(

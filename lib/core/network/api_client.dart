@@ -55,7 +55,9 @@ class ApiClient {
           if (errJson is Map && errJson.containsKey('error')) {
             errorMsg = errJson['error'].toString();
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('ApiClient: Error parsing response error json: $e');
+        }
 
         return {
           'success': false,

@@ -156,6 +156,7 @@ class _SmartFaceCameraState extends State<SmartFaceCamera>
                                       CustomPaint(
                                         painter: FacePainter(
                                             face: value.detectedFace!.face,
+                                            hasGlare: value.detectedFace?.hasGlare ?? false,
                                             indicatorShape:
                                                 widget.indicatorShape,
                                             indicatorAssetImage:
@@ -247,6 +248,11 @@ class _SmartFaceCameraState extends State<SmartFaceCamera>
     if (cameraController == null ||
         !cameraController.value.isInitialized ||
         cameraController.value.previewSize == null) {
+      return true;
+    }
+
+    if (!widget.controller.ignoreFacePositioning &&
+        widget.controller.value.detectedFace?.hasGlare == true) {
       return true;
     }
 

@@ -468,31 +468,75 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
     try {
       // 1. Check/Mark Attendance
       final attendanceResult = await _checkAndMarkAttendance(selectedExam);
-      attendanceId = attendanceResult['attendanceId'];
+      if (attendanceResult['success'] == true) {
+        attendanceId = attendanceResult['attendanceId'];
+        if (attendanceResult['isNew'] == true) {
+          debugPrint(' 📋 New attendance record created: $attendanceId');
+        } else {
+          debugPrint(' ℹ️ Reusing existing attendance record: $attendanceId');
+        }
+      } else {
+        debugPrint(
+          ' ⚠️ Attendance verification issue: ${attendanceResult['error']}',
+        );
+      }
 
       // Close loading dialog
       if (mounted) Navigator.pop(context);
-
-      if (attendanceResult['success'] == false) {
-        // Log warning but allow proceeding?
-        // print(' Attendance marking issue: ${attendanceResult['error']}');
-        // Optional: Show warning dialog? For now, we proceed to upload page.
-      }
     } catch (e) {
+      debugPrint(' ⚠️ Error in attendance verification flow: $e');
       // Close loading dialog if error
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
-      // print(' Error in attendance flow: $e');
-      // We continue to upload page even if attendance fails,
-      // but maybe we should warn the user.
-      // For now, proceeding as per "soft fail" requirement.
     }
+
+    if (!mounted) return;
+
+    // Show popup notice before opening upload page
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.info_outline, color: Color(0xFF444CE7), size: 24),
+            SizedBox(width: 8),
+            Text(
+              "Important Notice",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
+        ),
+        content: const Text(
+          "Please Click Submit All button once you capture and upload the required questions you want to upload",
+          style: TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF444CE7),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              "OK",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
 
     // Get today's date formatted as dd-MM-yyyy for the S3 path
     final today = DateFormat('dd-MM-yyyy').format(DateTime.now());
-
-    if (!mounted) return;
 
     // Navigate to the chosen destination or default to UploadPage
     Navigator.pop(context); // Close main dialog
@@ -525,23 +569,20 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
     Map<String, String> exam,
   ) async {
     final studentId = _studentIdController.text.trim();
-    final fullCourseCode = exam['fullCourseCode']!;
-    final session = exam['session']!;
-    // Standardize date format for DB (yyyy-MM-dd) or match Excel?
-    // The previous plan uses 'yyyy-MM-dd' for DB Date field usually.
-    // However, ExamDetailsService returns date from Excel which might be '29-12-2025'.
-    // Let's use standard ISO for DB if possible, or keep Excel format if that's the key.
-    // DynamoDBAttendanceService expects examDate in a specific format?
-    // Let's look at DynamoDBAttendanceService. The plan says date is stored.
-    // Let's use the current date as the 'examDate' since we are uploading NOW.
-    // Or use the date from Excel if available.
+    final fullCourseCode = exam['fullCourseCode'] ?? exam['courseCode'] ?? '';
+    final session = exam['session'] ?? 'FN';
     final now = DateTime.now();
-    final examDate = DateFormat(
-      'dd-MM-yyyy',
-    ).format(now); // Matches S3 folder structure
+    final examDate = (exam['date'] != null && exam['date']!.isNotEmpty)
+        ? exam['date']!
+        : DateFormat('dd-MM-yyyy').format(now);
+    final effectiveCentre = widget.centre.trim().isNotEmpty
+        ? widget.centre.trim()
+        : (_studentCentre != null && _studentCentre!.trim().isNotEmpty
+              ? _studentCentre!.trim()
+              : 'Unknown');
 
     try {
-      // 1. Check existing attendance (exact match: student + course + date + session)
+      // 1. Check existing attendance in DynamoDB (exact match: student + course + date + session)
       final existingAttendanceId =
           await DynamoDBAttendanceService.getExistingAttendance(
             bitsId: studentId,
@@ -550,59 +591,55 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
             sessionType: session,
           );
 
-      if (existingAttendanceId != null) {
+      if (existingAttendanceId != null && existingAttendanceId.isNotEmpty) {
         debugPrint(
-          ' ✅ Attendance already marked for $fullCourseCode ($session) on $examDate → $existingAttendanceId',
+          ' ℹ️ Attendance already present for $studentId - $fullCourseCode ($session) on $examDate → $existingAttendanceId. Leaving as is.',
         );
-        return {'success': true, 'attendanceId': existingAttendanceId};
+        return {
+          'success': true,
+          'attendanceId': existingAttendanceId,
+          'isNew': false,
+        };
       }
 
-      // print(' New attendance record needed...');
+      // 2. Attendance is NOT present -> Mark attendance immediately for that student ID
+      debugPrint(
+        ' 📋 Attendance not present. Marking new attendance for $studentId ($fullCourseCode, $session) at $effectiveCentre...',
+      );
 
-      // 2. Get GPS Location
+      // GPS Location (with 3-second safety timeout)
       double lat = 0.0;
       double lng = 0.0;
       try {
-        final position = await _determinePosition();
+        final position = await _determinePosition().timeout(
+          const Duration(seconds: 3),
+        );
         lat = position.latitude;
         lng = position.longitude;
       } catch (locError) {
-        // print(' GPS Error: $locError. Using 0.0, 0.0');
+        debugPrint(
+          ' [UploadAnswerSheetDialog] GPS Error/Timeout: $locError. Defaulting to 0.0, 0.0',
+        );
       }
 
-      // 3. Get total questions (to set pending count)
+      // Total questions
       int totalQuestions = 0;
       try {
-        // We need to fetch slots to count them
         final slots = await ExamDetailsService.getQuestionSlots(
           fullCourseCode: fullCourseCode,
           date: examDate,
-        );
+        ).timeout(const Duration(seconds: 4));
         totalQuestions = slots.length;
-        // print(' Found $totalQuestions questions for this exam');
       } catch (e) {
-        // print(' Could not count questions: $e');
-        totalQuestions = 15; // Default fallback?
+        totalQuestions = 15;
       }
 
-      // 4. Get Exam Times from Lambda response (populated from DynamoDB bits-exam-center-timings)
+      // Exam Times from Lambda response
       String startTime = exam['examStartTime'] ?? '';
       String endTime = exam['examEndTime'] ?? '';
 
-      if (startTime.isEmpty || endTime.isEmpty) {
-        // This means DynamoDB had no timings for this centre+session.
-        // Log a warning — times will be empty strings in the attendance record.
-        debugPrint(
-          ' ⚠ Warning: No DynamoDB timings for session=${exam["session"]} '
-          'centre=${_studentCentre ?? "unknown"}. '
-          'Check bits-exam-center-timings table.',
-        );
-      } else {
-        debugPrint(' ✅ Using DynamoDB timings: $startTime - $endTime');
-      }
-
-      // 5. Create Attendance Record
-      final success = await DynamoDBAttendanceService.saveLoginRecord(
+      // Save login/attendance record in DynamoDB (bits-attendance-details)
+      final newAttendanceId = await DynamoDBAttendanceService.saveLoginRecord(
         bitsId: studentId,
         latitude: lat,
         longitude: lng,
@@ -613,32 +650,19 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
         examStartTime: startTime,
         examEndTime: endTime,
         sessionType: session,
-        center: widget.centre,
+        center: effectiveCentre,
         uploadStartTime: DateFormat('HH:mm:ss').format(DateTime.now()),
       );
 
-      if (!success) {
-        return {'success': false, 'error': 'Failed to save attendance record.'};
+      if (newAttendanceId == null || newAttendanceId.isEmpty) {
+        debugPrint(' ❌ Failed to save new attendance record in DynamoDB.');
+        return {
+          'success': false,
+          'error': 'Failed to save attendance record in DynamoDB.',
+        };
       }
 
-      // Re-fetch attendance ID after save
-      await Future.delayed(Duration(milliseconds: 500));
-
-      final newAttendanceId =
-          await DynamoDBAttendanceService.getExistingAttendance(
-            bitsId: studentId,
-            courseCode: fullCourseCode,
-            examDate: examDate,
-            sessionType: session,
-          );
-
-      if (newAttendanceId == null) {
-        // Fallback if read-after-write consistency delay is issue
-        // We can construct it manually if we knew the timestamp, but we don't.
-        return {'success': true, 'attendanceId': null};
-      }
-
-      // Create initial finishedTable record
+      // Initialize finishedTable record
       try {
         await DynamoDBFinishedService.createInitialRecord(
           bitsId: studentId,
@@ -651,8 +675,10 @@ class _UploadAnswerSheetDialogState extends State<UploadAnswerSheetDialog> {
         debugPrint(' Failed to create finished record: $dbFinishedErr');
       }
 
-      return {'success': true, 'attendanceId': newAttendanceId};
+      debugPrint(' ✅ New attendance marked successfully: $newAttendanceId');
+      return {'success': true, 'attendanceId': newAttendanceId, 'isNew': true};
     } catch (e) {
+      debugPrint(' ❌ Error during attendance check/mark: $e');
       return {'success': false, 'error': e.toString()};
     }
   }

@@ -10,6 +10,8 @@ export 'package:face_camera/src/smart_face_camera.dart';
 export 'package:face_camera/src/res/enums.dart';
 export 'package:face_camera/src/models/detected_image.dart';
 export 'package:face_camera/src/controllers/face_camera_controller.dart';
+export 'package:face_camera/src/utils/spectacle_glare_analyzer.dart';
+
 
 class FaceCamera {
   static List<CameraDescription> _cameras = [];

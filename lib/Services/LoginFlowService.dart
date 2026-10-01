@@ -1,3 +1,5 @@
+// ignore_for_file: file_names
+
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:camera/camera.dart';
@@ -193,7 +195,9 @@ class LoginFlowService {
         final locRes = await locationFuture;
         logLat = (locRes['latitude'] as num?)?.toDouble() ?? 0.0;
         logLong = (locRes['longitude'] as num?)?.toDouble() ?? 0.0;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('LoginFlowService: Error getting location for failed login log: $e');
+      }
 
       S3LogService.logAttendance(
         supervisorId: supervisorId,
@@ -206,7 +210,15 @@ class LoginFlowService {
         verificationScore: simScore >= 0 ? simScore.toStringAsFixed(4) : '',
       );
       if (context.mounted) {
-        _showError(context, 'Face verification failed. Please try again.');
+        if (faceError != null &&
+            faceError.contains('Spectacle glare detected')) {
+          _showError(
+            context,
+            'Spectacle glare detected! Please tilt your head slightly away from the light and try again.',
+          );
+        } else {
+          _showError(context, 'Face verification failed. Please try again.');
+        }
       }
       return;
     }

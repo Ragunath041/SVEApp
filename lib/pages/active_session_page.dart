@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/pages/homepage.dart';
 import 'package:supervisorapp/widgets/footer.dart';
@@ -79,14 +80,18 @@ class _ActiveSessionPageState extends State<ActiveSessionPage>
       final et = DateTime.parse(session['endTime']);
       endTimeDisplay =
           '${et.hour.toString().padLeft(2, '0')}:${et.minute.toString().padLeft(2, '0')}';
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('ActiveSessionPage: Error parsing session endTime: $e');
+    }
     String startTimeDisplay = '--';
     try {
       final st = DateTime.parse(session['allowedStartTime'])
           .add(const Duration(minutes: 60)); // actual exam start
       startTimeDisplay =
           '${st.hour.toString().padLeft(2, '0')}:${st.minute.toString().padLeft(2, '0')}';
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('ActiveSessionPage: Error parsing session allowedStartTime: $e');
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -99,7 +104,7 @@ class _ActiveSessionPageState extends State<ActiveSessionPage>
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,

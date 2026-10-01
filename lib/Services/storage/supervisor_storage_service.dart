@@ -276,7 +276,9 @@ class SupervisorStorageService {
             embedding.join(','),
           );
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('SupervisorStorageService: Error caching embedding for $supervisorId: $e');
+      }
 
       await SessionCacheService.saveToLocalStorage(
         supervisorId: supervisorId,

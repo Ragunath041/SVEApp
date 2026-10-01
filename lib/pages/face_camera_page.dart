@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:face_camera/face_camera.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/Services/logging/face_telemetry_log_service.dart';
 import '../Services/FaceRecognitionService.dart';
@@ -70,22 +69,24 @@ class _FaceCameraPageState extends State<FaceCameraPage> {
 
         if (!widget.autoCapture || _isCapturingData) return;
 
-        final isWellPositioned = _isFaceWellPositioned(face);
+        final bool hasGlare = _controller.value.detectedFace?.hasGlare ?? false;
+        final isWellPositioned = _isFaceWellPositioned(face, hasGlare: hasGlare);
 
         if (isWellPositioned && !_faceIsStable) {
           _faceIsStable = true;
-          debugPrint('🎯 Face stable - starting 1.5s capture countdown...');
+          debugPrint('🎯 Face stable & clear - starting 1.5s capture countdown...');
           _stabilityTimer?.cancel();
           _stabilityTimer = Timer(_stabilityDuration, () {
             if (mounted && !_isCapturingData) {
-              // Robust final check: verify the face is STILL well-positioned at the exact moment of capture
-              if (_isFaceWellPositioned(_lastDetectedFace)) {
+              final bool currentGlare = _controller.value.detectedFace?.hasGlare ?? false;
+              // Robust final check: verify the face is STILL well-positioned and glare-free right before capture
+              if (_isFaceWellPositioned(_lastDetectedFace, hasGlare: currentGlare)) {
                 debugPrint('📸 Stability timer finished - capturing now!');
                 _stabilityTimer = null;
                 _controller.captureImage();
               } else {
                 debugPrint(
-                  '❌ Capture cancelled: face is no longer well-positioned right before capture.',
+                  '❌ Capture cancelled: face moved or glare detected right before capture.',
                 );
                 _faceIsStable = false;
                 _stabilityTimer = null;
@@ -178,14 +179,16 @@ class _FaceCameraPageState extends State<FaceCameraPage> {
 
               try {
                 await FaceRecognitionServiceEnhanced.initialize();
-                Navigator.pop(context); // Close loading dialog
+                if (!mounted) return;
+                Navigator.of(context).pop(); // Close loading dialog
                 if (FaceRecognitionServiceEnhanced.isInitialized) {
                   _initializeController(); // Success: start stream
                 } else {
                   _showModelErrorDialog();
                 }
               } catch (e) {
-                Navigator.pop(context); // Close loading dialog
+                if (!mounted) return;
+                Navigator.of(context).pop(); // Close loading dialog
                 _showModelErrorDialog();
               }
             },
@@ -247,11 +250,17 @@ class _FaceCameraPageState extends State<FaceCameraPage> {
     super.dispose();
   }
 
-  /// Returns true if the face meets the relaxed well-positioned criteria.
-  bool _isFaceWellPositioned(Face? face) {
+  /// Returns true if the face meets the relaxed well-positioned criteria and is free of optical glare.
+  bool _isFaceWellPositioned(Face? face, {bool hasGlare = false}) {
     if (face == null) {
       _customGuidanceMessage =
           widget.instructionText ?? 'Position your face inside the frame';
+      return false;
+    }
+
+    // 0. Spectacle Glare / Reflection check
+    if (hasGlare) {
+      _customGuidanceMessage = 'Spectacle glare detected! Tilt head slightly';
       return false;
     }
 
@@ -326,8 +335,11 @@ class _FaceCameraPageState extends State<FaceCameraPage> {
           if (!_isCapturingData)
             SmartFaceCamera(
               controller: _controller,
-              messageBuilder: (context, face) {
-                _isFaceWellPositioned(face?.face);
+              messageBuilder: (context, detectedFace) {
+                _isFaceWellPositioned(
+                  detectedFace?.face,
+                  hasGlare: detectedFace?.hasGlare ?? false,
+                );
                 return _buildMessage(_customGuidanceMessage);
               },
               showControls: true,

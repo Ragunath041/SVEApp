@@ -1,3 +1,5 @@
+// ignore_for_file: file_names, avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'dart:convert';
@@ -60,7 +62,9 @@ class _QRScannerPageState extends State<QRScannerPage>
       if (parsed is Map<String, dynamic>) {
         decoded = parsed;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[QRScannerPage] QR content is not JSON formatted: $e');
+    }
 
     if (decoded != null) {
       return LayoutBuilder(
@@ -247,7 +251,9 @@ class _QRScannerPageState extends State<QRScannerPage>
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[QRScannerPage] Error detecting image URL in QR: $e');
+    }
     return null;
   }
 
@@ -299,7 +305,9 @@ class _QRScannerPageState extends State<QRScannerPage>
           }
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[QRScannerPage] Error parsing student data: $e');
+    }
 
     return ScannedStudentData(
       name: name,

@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_import, curly_braces_in_flow_control_structures
+
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -5,13 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:face_camera/src/extension/nv21_converter.dart';
 
+import 'package:face_camera/src/utils/spectacle_glare_analyzer.dart';
+
 import '../models/detected_image.dart';
 
 class FaceIdentifier {
-  // PATCH: Use a singleton FaceDetector instead of creating one per frame.
-  // The original code created + leaked a new FaceDetector on every camera
-  // frame (~30/sec), exhausting native ML Kit resources and causing
-  // "Error: null" spam that broke face detection entirely.
   static FaceDetector? _detector;
   static FaceDetectorMode? _detectorMode;
 
@@ -30,11 +30,15 @@ class FaceIdentifier {
     return _detector!;
   }
 
+  static final GlareSmoother _glareSmoother =
+      GlareSmoother(onFrames: 2, offFrames: 3);
+
   /// Call this when the camera is permanently torn down (e.g. app disposed).
   static Future<void> closeDetector() async {
     await _detector?.close();
     _detector = null;
     _detectorMode = null;
+    _glareSmoother.reset();
   }
 
   static Future<DetectedFace?> scanImage(
@@ -49,16 +53,34 @@ class FaceIdentifier {
     };
 
     DetectedFace? result;
+    final inputImage =
+        _inputImageFromCameraImage(cameraImage, controller, orientations);
     final face = await _detectFace(
         performanceMode: performanceMode,
-        visionImage:
-            _inputImageFromCameraImage(cameraImage, controller, orientations));
+        visionImage: inputImage);
     if (face != null) {
-      result = face;
+      if (face.face != null) {
+        final glareResult = SpectacleGlareAnalyzer.analyze(
+          image: cameraImage,
+          face: face.face,
+          rotation: inputImage?.metadata?.rotation,
+        );
+        final bool smoothedGlare = _glareSmoother.update(glareResult.hasGlare);
+        result = face.copyWith(
+          hasGlare: smoothedGlare,
+          glareScore: glareResult.glareScore,
+        );
+      } else {
+        _glareSmoother.reset();
+        result = face;
+      }
+    } else {
+      _glareSmoother.reset();
     }
 
     return result;
   }
+
 
   static InputImage? _inputImageFromCameraImage(CameraImage image,
       CameraController? controller, Map<DeviceOrientation, int> orientations) {

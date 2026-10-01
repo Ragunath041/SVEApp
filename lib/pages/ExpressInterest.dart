@@ -1,3 +1,5 @@
+// ignore_for_file: file_names
+
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/Services/duty/duty_allocation_service.dart';

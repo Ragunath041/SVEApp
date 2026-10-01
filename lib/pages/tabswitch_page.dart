@@ -15,13 +15,11 @@ class TabSwitchPage extends StatefulWidget {
 }
 
 class _TabSwitchPageState extends State<TabSwitchPage> {
-  final S3TimeoutService _s3Service = S3TimeoutService();
-  final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
   List<Map<String, String>> _logs = [];
   List<Map<String, String>> _filteredLogs = [];
-  List<Map<String, dynamic>> _activeExams = [];
-  bool _isSessionActive = false;
+
+  final TabSwitchService _s3Service = TabSwitchService();
 
   Timer? _pollingTimer;
   bool _isChecking = false;
@@ -42,7 +40,6 @@ class _TabSwitchPageState extends State<TabSwitchPage> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -137,18 +134,8 @@ class _TabSwitchPageState extends State<TabSwitchPage> {
 
       if (mounted) {
         setState(() {
-          _activeExams = activeExams;
-          _isSessionActive = activeExams.isNotEmpty;
           _logs = sessionLogs;
-
-          final query = _searchController.text.toLowerCase();
-          _filteredLogs = sessionLogs
-              .where(
-                (log) =>
-                    (log['Student ID'] ?? '').toLowerCase().contains(query) ||
-                    (log['Course'] ?? '').toLowerCase().contains(query),
-              )
-              .toList();
+          _filteredLogs = sessionLogs;
           _isLoading = false;
         });
 
@@ -173,21 +160,7 @@ class _TabSwitchPageState extends State<TabSwitchPage> {
     }
   }
 
-  void _filterLogs(String query) {
-    setState(() {
-      _filteredLogs = _logs
-          .where(
-            (log) =>
-                (log['Student ID'] ?? '').toLowerCase().contains(
-                  query.toLowerCase(),
-                ) ||
-                (log['Course'] ?? '').toLowerCase().contains(
-                  query.toLowerCase(),
-                ),
-          )
-          .toList();
-    });
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -231,14 +204,12 @@ class _TabSwitchPageState extends State<TabSwitchPage> {
         children: [
           Icon(Icons.notifications_none, size: 80, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          Text(
-            _searchController.text.isEmpty
-                ? 'No Violations Found'
-                : 'No matching records found',
+          const Text(
+            'No Violations Found',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
+              color: Colors.grey,
             ),
           ),
         ],
@@ -255,7 +226,7 @@ class _TabSwitchPageState extends State<TabSwitchPage> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),

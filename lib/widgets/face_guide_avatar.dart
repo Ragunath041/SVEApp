@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
@@ -157,7 +159,8 @@ class _FaceGuideAvatarState extends State<FaceGuideAvatar>
                   duration: const Duration(milliseconds: 500),
                   child: Transform(
                     key: ValueKey(
-                        widget.currentStep), // Added key for AnimatedSwitcher
+                      widget.currentStep,
+                    ), // Added key for AnimatedSwitcher
                     transform: Matrix4.identity()
                       ..setEntry(3, 2, 0.001) // perspective
                       ..rotateY(yaw * 0.3)
@@ -180,13 +183,13 @@ class _FaceGuideAvatarState extends State<FaceGuideAvatar>
                           () {
                             switch (widget.currentStep) {
                               case 7:
-                                return 'assets/images/fullperson.png';
+                                return 'assets/images/fullperson.webp';
                               case 8:
                               case 9:
                               case 10:
-                                return 'assets/images/image.png';
+                                return 'assets/images/image.webp';
                               default:
-                                return 'assets/images/image.jpg';
+                                return 'assets/images/image.webp';
                             }
                           }(),
                           width: widget.width,
@@ -262,11 +265,13 @@ class _FaceAvatarPainter extends CustomPainter {
       ).createShader(Rect.fromCircle(center: center, radius: radius));
 
     final facePath = Path()
-      ..addOval(Rect.fromCenter(
-        center: center,
-        width: radius * 1.6,
-        height: radius * 2.0,
-      ));
+      ..addOval(
+        Rect.fromCenter(
+          center: center,
+          width: radius * 1.6,
+          height: radius * 2.0,
+        ),
+      );
     canvas.drawPath(facePath, facePaint);
 
     // ── Ears ───────────────────
@@ -299,14 +304,30 @@ class _FaceAvatarPainter extends CustomPainter {
 
     final hairPath = Path()
       ..moveTo(center.dx - radius * 0.85, center.dy - radius * 0.2)
-      ..quadraticBezierTo(center.dx - radius * 0.8, center.dy - radius * 1.1,
-          center.dx, center.dy - radius * 1.15)
-      ..quadraticBezierTo(center.dx + radius * 0.8, center.dy - radius * 1.1,
-          center.dx + radius * 0.85, center.dy - radius * 0.2)
-      ..quadraticBezierTo(center.dx + radius * 0.5, center.dy - radius * 0.7,
-          center.dx, center.dy - radius * 0.6)
-      ..quadraticBezierTo(center.dx - radius * 0.5, center.dy - radius * 0.7,
-          center.dx - radius * 0.85, center.dy - radius * 0.2)
+      ..quadraticBezierTo(
+        center.dx - radius * 0.8,
+        center.dy - radius * 1.1,
+        center.dx,
+        center.dy - radius * 1.15,
+      )
+      ..quadraticBezierTo(
+        center.dx + radius * 0.8,
+        center.dy - radius * 1.1,
+        center.dx + radius * 0.85,
+        center.dy - radius * 0.2,
+      )
+      ..quadraticBezierTo(
+        center.dx + radius * 0.5,
+        center.dy - radius * 0.7,
+        center.dx,
+        center.dy - radius * 0.6,
+      )
+      ..quadraticBezierTo(
+        center.dx - radius * 0.5,
+        center.dy - radius * 0.7,
+        center.dx - radius * 0.85,
+        center.dy - radius * 0.2,
+      )
       ..close();
     canvas.drawPath(hairPath, hairPaint);
 
@@ -324,11 +345,19 @@ class _FaceAvatarPainter extends CustomPainter {
     final lbrow = Path()
       ..moveTo(center.dx - 45, center.dy - 35)
       ..quadraticBezierTo(
-          center.dx - 30, center.dy - 42, center.dx - 15, center.dy - 35);
+        center.dx - 30,
+        center.dy - 42,
+        center.dx - 15,
+        center.dy - 35,
+      );
     final rbrow = Path()
       ..moveTo(center.dx + 15, center.dy - 35)
       ..quadraticBezierTo(
-          center.dx + 30, center.dy - 42, center.dx + 45, center.dy - 35);
+        center.dx + 30,
+        center.dy - 42,
+        center.dx + 45,
+        center.dy - 35,
+      );
 
     canvas.drawPath(lbrow, browPaint);
     canvas.drawPath(rbrow, browPaint);
@@ -340,12 +369,17 @@ class _FaceAvatarPainter extends CustomPainter {
 
     void drawEye(Offset pos) {
       canvas.drawOval(
-          Rect.fromCenter(center: pos, width: 22, height: 12), whitePaint);
+        Rect.fromCenter(center: pos, width: 22, height: 12),
+        whitePaint,
+      );
       canvas.drawCircle(pos, 5, irisPaint);
       canvas.drawCircle(pos, 2, pupilPaint);
       // Reflection
       canvas.drawCircle(
-          pos.translate(-2, -2), 1, Paint()..color = Colors.white70);
+        pos.translate(-2, -2),
+        1,
+        Paint()..color = Colors.white70,
+      );
     }
 
     drawEye(Offset(center.dx - 30, center.dy - 20));
@@ -362,24 +396,46 @@ class _FaceAvatarPainter extends CustomPainter {
       ..moveTo(center.dx, center.dy)
       ..lineTo(center.dx, center.dy + 15)
       ..quadraticBezierTo(
-          center.dx - 6, center.dy + 20, center.dx, center.dy + 20)
+        center.dx - 6,
+        center.dy + 20,
+        center.dx,
+        center.dy + 20,
+      )
       ..quadraticBezierTo(
-          center.dx + 6, center.dy + 20, center.dx, center.dy + 20);
+        center.dx + 6,
+        center.dy + 20,
+        center.dx,
+        center.dy + 20,
+      );
     canvas.drawPath(nose, nosePaint);
 
     // ── Lips ───────────────────
     final lipPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [const Color(0xFFE57373), const Color(0xFFC62828)],
-      ).createShader(Rect.fromCenter(
-          center: Offset(center.dx, center.dy + 45), width: 40, height: 15));
+      ..shader =
+          LinearGradient(
+            colors: [const Color(0xFFE57373), const Color(0xFFC62828)],
+          ).createShader(
+            Rect.fromCenter(
+              center: Offset(center.dx, center.dy + 45),
+              width: 40,
+              height: 15,
+            ),
+          );
 
     final lips = Path()
       ..moveTo(center.dx - 20, center.dy + 45)
       ..quadraticBezierTo(
-          center.dx, center.dy + 40, center.dx + 20, center.dy + 45)
+        center.dx,
+        center.dy + 40,
+        center.dx + 20,
+        center.dy + 45,
+      )
       ..quadraticBezierTo(
-          center.dx, center.dy + 52, center.dx - 20, center.dy + 45)
+        center.dx,
+        center.dy + 52,
+        center.dx - 20,
+        center.dy + 45,
+      )
       ..close();
     canvas.drawPath(lips, lipPaint);
 
@@ -432,10 +488,14 @@ class _DirectionArrowPainter extends CustomPainter {
     const double tipSize = 12;
     arrow.moveTo(tipX, tipY);
     arrow.lineTo(
-        tipX - tipSize * cos(angle - 0.4), tipY - tipSize * sin(angle - 0.4));
+      tipX - tipSize * cos(angle - 0.4),
+      tipY - tipSize * sin(angle - 0.4),
+    );
     arrow.moveTo(tipX, tipY);
     arrow.lineTo(
-        tipX - tipSize * cos(angle + 0.4), tipY - tipSize * sin(angle + 0.4));
+      tipX - tipSize * cos(angle + 0.4),
+      tipY - tipSize * sin(angle + 0.4),
+    );
 
     canvas.drawPath(arrow, arrowPaint);
   }

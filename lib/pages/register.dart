@@ -143,7 +143,9 @@ class _RegisterState extends State<Register> {
       MaterialPageRoute(
         builder: (context) => FaceCameraPage(
           title: 'Step ${_currentPoseIndex + 1}/5 (${pose['label']})',
-          instructionText: pose['id'] == 'straight' ? "Look Straight Ahead" : "Turn your head ${pose['label']}",
+          instructionText: pose['id'] == 'straight'
+              ? "Look Straight Ahead"
+              : "Turn your head ${pose['label']}",
           supervisorId: supervisorIdController.text,
           autoCapture: true,
           poseId: pose['id']!,
@@ -248,7 +250,9 @@ class _RegisterState extends State<Register> {
                 ),
               ),
               Text(
-                pose['id'] == 'straight' ? "Look Straight Ahead" : "Turn your head ${pose['label']}",
+                pose['id'] == 'straight'
+                    ? "Look Straight Ahead"
+                    : "Turn your head ${pose['label']}",
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -290,6 +294,266 @@ class _RegisterState extends State<Register> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleVerifySupervisor() async {
+    if (supervisorIdController.text.trim().isEmpty) {
+      _showErrorDialog('Please enter your Supervisor ID.');
+      return;
+    }
+
+    setState(() => _isVerifying = true);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext loadingDialogContext) {
+        return const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    color: Color.fromARGB(255, 68, 76, 231),
+                  ),
+                  SizedBox(height: 16),
+                  Text('Verifying...'),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final supervisorId = supervisorIdController.text.trim();
+      final downloadResult = await _storageService.downloadRegistrationFromS3(
+        supervisorId: supervisorId,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (downloadResult['success']) {
+        setState(() => _isVerifying = false);
+
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext alreadyRegDialogContext) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 60,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Already Registered',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Your registration profile is already active on this device. Tap Continue to proceed to login.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(alreadyRegDialogContext).pop();
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (context) => const Login(),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(
+                            255,
+                            68,
+                            76,
+                            231,
+                          ),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Continue'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      } else {
+        final detailsResult = await _dynamoDBService.getSupervisorDetails(
+          supervisorId,
+        );
+
+        if (!mounted) return;
+
+        if (detailsResult['success']) {
+          final data = detailsResult['data'] ?? {};
+          debugPrint('Fetched supervisor data: $data');
+
+          setState(() {
+            _isVerifying = false;
+            _isVerified = true;
+
+            fullNameController.text = data['name'] ?? data['Name'] ?? '';
+            selectedCentre = data['centre'] ?? data['Exam hall'];
+            selectedInvigilatorType = data['type'] ?? data['Type'];
+            phoneNumberController.text = data['phoneNumber'] ?? '';
+            cityController.text = data['city'] ?? '';
+            addressController.text = data['address'] ?? '';
+          });
+
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext successDialogContext) {
+              return Dialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.green.withOpacity(0.1),
+                        ),
+                        child: const Icon(
+                          Icons.verified_user,
+                          color: Colors.green,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Supervisor ID Verified',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Your Supervisor ID has been verified. Please proceed to complete face capture.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(successDialogContext).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(
+                              255,
+                              68,
+                              76,
+                              231,
+                            ),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text(
+                            'Proceed to Register',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        } else {
+          setState(() => _isVerifying = false);
+          final String errorMsg =
+              detailsResult['error'] ??
+              'Supervisor ID not found, Please contact Admin';
+          if (!mounted) return;
+          if (AWSClockSyncService.isLikelyDeviceTimeIssue(errorMsg)) {
+            AWSClockSyncService.handlePossibleTimeIssue(context, errorMsg);
+          } else {
+            _showErrorDialog(
+              errorMsg,
+              buttonText: errorMsg.toLowerCase().contains('not found')
+                  ? 'Start Fresh Registration'
+                  : null,
+              onPressed: errorMsg.toLowerCase().contains('not found')
+                  ? () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (context) => Register(
+                            isFreshRegistration: true,
+                            supervisorId: supervisorIdController.text.trim(),
+                          ),
+                        ),
+                      );
+                    }
+                  : null,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      setState(() => _isVerifying = false);
+      _showErrorDialog(
+        'Supervisor verification failed. Please check your internet connection and try again.',
+      );
+      debugPrint('Verification failed: $e');
+    }
   }
 
   Future<void> _completeRegistration() async {
@@ -350,10 +614,12 @@ class _RegisterState extends State<Register> {
           status: 'FAILED',
           errorMessage: errorMsg,
         );
-        if (AWSClockSyncService.isLikelyDeviceTimeIssue(errorMsg)) {
-          AWSClockSyncService.handlePossibleTimeIssue(context, errorMsg);
-        } else {
-          _showErrorDialog(errorMsg);
+        if (mounted) {
+          if (AWSClockSyncService.isLikelyDeviceTimeIssue(errorMsg)) {
+            AWSClockSyncService.handlePossibleTimeIssue(context, errorMsg);
+          } else {
+            _showErrorDialog(errorMsg);
+          }
         }
         return;
       }
@@ -556,7 +822,9 @@ class _RegisterState extends State<Register> {
                 fontSize: 19,
               ),
             ),
-            content: Text("Your supervisor profile has been successfully registered. Please proceed to login."),
+            content: Text(
+              "Your supervisor profile has been successfully registered. Please proceed to login.",
+            ),
 
             actions: [
               FilledButton(
@@ -579,7 +847,9 @@ class _RegisterState extends State<Register> {
         status: 'FAILED',
         errorMessage: e.toString(),
       );
-      _showErrorDialog('Registration could not be completed. Please check your connection and try again.');
+      _showErrorDialog(
+        'Registration could not be completed. Please check your connection and try again.',
+      );
       debugPrint('Error: $e');
     }
   }
@@ -815,7 +1085,7 @@ class _RegisterState extends State<Register> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,
@@ -1049,404 +1319,7 @@ class _RegisterState extends State<Register> {
                               child: ElevatedButton(
                                 onPressed: _isVerifying || _isVerified
                                     ? null
-                                    : () async {
-                                        // Validate supervisor ID
-                                        if (supervisorIdController.text
-                                            .trim()
-                                            .isEmpty) {
-                                          _showErrorDialog(
-                                            'Please enter your Supervisor ID.',
-                                          );
-                                          return;
-                                        }
-
-                                        setState(() => _isVerifying = true);
-
-                                        // Show loading dialog
-                                        showDialog(
-                                          context: context,
-                                          barrierDismissible: false,
-                                          builder: (BuildContext context) {
-                                            return Center(
-                                              child: Card(
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    24.0,
-                                                  ),
-                                                  child: Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      CircularProgressIndicator(
-                                                        color: Color.fromARGB(
-                                                          255,
-                                                          68,
-                                                          76,
-                                                          231,
-                                                        ),
-                                                      ),
-                                                      SizedBox(height: 16),
-                                                      Text('Verifying...'),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        );
-
-                                        try {
-                                          // Check if supervisor folder exists in S3
-                                          final supervisorId =
-                                              supervisorIdController.text
-                                                  .trim();
-                                          final downloadResult =
-                                              await _storageService
-                                                  .downloadRegistrationFromS3(
-                                                    supervisorId: supervisorId,
-                                                  );
-
-                                          // Close loading dialog
-                                          if (mounted)
-                                            Navigator.of(context).pop();
-
-                                          if (downloadResult['success']) {
-                                            // Already registered - redirect to login
-                                            setState(
-                                              () => _isVerifying = false,
-                                            );
-
-                                            if (mounted) {
-                                              showDialog(
-                                                context: context,
-                                                barrierDismissible: false,
-                                                builder: (BuildContext context) {
-                                                  return Dialog(
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            16,
-                                                          ),
-                                                    ),
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            24.0,
-                                                          ),
-                                                      child: Column(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            Icons.check_circle,
-                                                            color: Colors.green,
-                                                            size: 60,
-                                                          ),
-                                                          SizedBox(height: 20),
-                                                          Text(
-                                                            'Already Registered',
-                                                            style: TextStyle(
-                                                              fontSize: 18,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                            ),
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                          ),
-                                                          SizedBox(height: 12),
-                                                          Text(
-                                                            'Your registration profile is already active on this device. Tap Continue to proceed to login.',
-                                                            style: TextStyle(
-                                                              fontSize: 14,
-                                                              color: Colors
-                                                                  .grey
-                                                                  .shade600,
-                                                            ),
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                          ),
-                                                          SizedBox(height: 24),
-                                                          SizedBox(
-                                                            width:
-                                                                double.infinity,
-                                                            child: ElevatedButton(
-                                                              onPressed: () {
-                                                                Navigator.of(
-                                                                  context,
-                                                                ).pop();
-                                                                Navigator.of(
-                                                                  context,
-                                                                ).pushReplacement(
-                                                                  MaterialPageRoute(
-                                                                    builder:
-                                                                        (
-                                                                          context,
-                                                                        ) =>
-                                                                            const Login(),
-                                                                  ),
-                                                                );
-                                                              },
-                                                              child: Text(
-                                                                'Continue',
-                                                              ),
-                                                              style: ElevatedButton.styleFrom(
-                                                                backgroundColor:
-                                                                    Color.fromARGB(
-                                                                      255,
-                                                                      68,
-                                                                      76,
-                                                                      231,
-                                                                    ),
-                                                                foregroundColor:
-                                                                    Colors
-                                                                        .white,
-                                                                padding:
-                                                                    EdgeInsets.symmetric(
-                                                                      vertical:
-                                                                          12,
-                                                                    ),
-                                                                shape: RoundedRectangleBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        8,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                              );
-                                            }
-                                          } else {
-                                            // Not registered - fetch from bits-Supervisor-details
-                                            final detailsResult =
-                                                await _dynamoDBService
-                                                    .getSupervisorDetails(
-                                                      supervisorId,
-                                                    );
-
-                                            if (detailsResult['success']) {
-                                              final data =
-                                                  detailsResult['data'] ?? {};
-                                              print(
-                                                'Fetched supervisor data: $data',
-                                              ); // Debug log
-
-                                              setState(() {
-                                                _isVerifying = false;
-                                                _isVerified = true;
-
-                                                fullNameController.text =
-                                                    data['name'] ??
-                                                    data['Name'] ??
-                                                    "";
-                                                selectedCentre =
-                                                    data['centre'] ??
-                                                    data['Exam hall'];
-                                                selectedInvigilatorType =
-                                                    data['type'] ??
-                                                    data['Type'];
-                                                phoneNumberController.text =
-                                                    data['phoneNumber'] ?? "";
-                                                cityController.text =
-                                                    data['city'] ?? "";
-                                                addressController.text =
-                                                    data['address'] ?? "";
-                                              });
-
-                                              // Show success message for verified ID
-                                              if (mounted) {
-                                                showDialog(
-                                                  context: context,
-                                                  barrierDismissible: false,
-                                                  builder: (BuildContext context) {
-                                                    return Dialog(
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              16,
-                                                            ),
-                                                      ),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              24.0,
-                                                            ),
-                                                        child: Column(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: [
-                                                            // Success icon
-                                                            Container(
-                                                              width: 60,
-                                                              height: 60,
-                                                              decoration: BoxDecoration(
-                                                                shape: BoxShape
-                                                                    .circle,
-                                                                color: Colors
-                                                                    .green
-                                                                    .withOpacity(
-                                                                      0.1,
-                                                                    ),
-                                                              ),
-                                                              child: Icon(
-                                                                Icons
-                                                                    .verified_user,
-                                                                color: Colors
-                                                                    .green,
-                                                                size: 40,
-                                                              ),
-                                                            ),
-                                                            SizedBox(
-                                                              height: 20,
-                                                            ),
-                                                            Text(
-                                                              'Supervisor ID Verified',
-                                                              style: TextStyle(
-                                                                fontSize: 18,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                              ),
-                                                              textAlign:
-                                                                  TextAlign
-                                                                      .center,
-                                                            ),
-                                                            SizedBox(
-                                                              height: 12,
-                                                            ),
-                                                            Text(
-                                                              'Your Supervisor ID has been verified. Please proceed to complete face capture.',
-                                                              style: TextStyle(
-                                                                fontSize: 14,
-                                                                color: Colors
-                                                                    .grey
-                                                                    .shade600,
-                                                              ),
-                                                              textAlign:
-                                                                  TextAlign
-                                                                      .center,
-                                                            ),
-                                                            SizedBox(
-                                                              height: 24,
-                                                            ),
-                                                            SizedBox(
-                                                              width: double
-                                                                  .infinity,
-                                                              child: ElevatedButton(
-                                                                onPressed: () {
-                                                                  Navigator.of(
-                                                                    context,
-                                                                  ).pop();
-                                                                },
-                                                                child: Text(
-                                                                  'Proceed to Register',
-                                                                  style: TextStyle(
-                                                                    fontSize:
-                                                                        15,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                  ),
-                                                                ),
-                                                                style: ElevatedButton.styleFrom(
-                                                                  backgroundColor:
-                                                                      Color.fromARGB(
-                                                                        255,
-                                                                        68,
-                                                                        76,
-                                                                        231,
-                                                                      ),
-                                                                  foregroundColor:
-                                                                      Colors
-                                                                          .white,
-                                                                  padding:
-                                                                      EdgeInsets.symmetric(
-                                                                        vertical:
-                                                                            12,
-                                                                      ),
-                                                                  shape: RoundedRectangleBorder(
-                                                                    borderRadius:
-                                                                        BorderRadius.circular(
-                                                                          8,
-                                                                        ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                );
-                                              }
-                                            } else {
-                                              setState(
-                                                () => _isVerifying = false,
-                                              );
-                                              final String errorMsg =
-                                                  detailsResult['error'] ??
-                                                  'Supervisor ID not found, Please contact Admin';
-                                              if (AWSClockSyncService.isLikelyDeviceTimeIssue(
-                                                errorMsg,
-                                              )) {
-                                                AWSClockSyncService.handlePossibleTimeIssue(
-                                                  context,
-                                                  errorMsg,
-                                                );
-                                              } else {
-                                                _showErrorDialog(
-                                                  errorMsg,
-                                                  buttonText:
-                                                      errorMsg
-                                                          .toLowerCase()
-                                                          .contains('not found')
-                                                      ? 'Start Fresh Registration'
-                                                      : null,
-                                                  onPressed:
-                                                      errorMsg
-                                                          .toLowerCase()
-                                                          .contains('not found')
-                                                      ? () {
-                                                          Navigator.of(
-                                                            context,
-                                                          ).pop();
-                                                          Navigator.of(
-                                                            context,
-                                                          ).pushReplacement(
-                                                            MaterialPageRoute(
-                                                              builder: (context) => Register(
-                                                                isFreshRegistration:
-                                                                    true,
-                                                                supervisorId:
-                                                                    supervisorIdController
-                                                                        .text
-                                                                        .trim(),
-                                                              ),
-                                                            ),
-                                                          );
-                                                        }
-                                                      : null,
-                                                );
-                                              }
-                                            }
-                                          }
-                                        } catch (e) {
-                                          if (mounted)
-                                            Navigator.of(context).pop();
-                                          setState(() => _isVerifying = false);
-                                          _showErrorDialog(
-                                            'Supervisor verification failed. Please check your internet connection and try again.',
-                                          );
-                                          debugPrint('Verification failed: $e');
-                                        }
-                                      },
+                                    : _handleVerifySupervisor,
                                 child: _isVerifying
                                     ? SizedBox(
                                         height: 20,
@@ -1973,7 +1846,9 @@ class _RegisterState extends State<Register> {
                                       }
                                       if (emailController.text.trim().isEmpty &&
                                           _showEmail) {
-                                        _showErrorDialog('Please enter your email address.');
+                                        _showErrorDialog(
+                                          'Please enter your email address.',
+                                        );
                                         return;
                                       }
                                       if (widget.isFreshRegistration) {
@@ -2023,7 +1898,9 @@ class _RegisterState extends State<Register> {
                                       }
                                       if (cityController.text.trim().isEmpty &&
                                           _showCity) {
-                                        _showErrorDialog('Please enter your city.');
+                                        _showErrorDialog(
+                                          'Please enter your city.',
+                                        );
                                         return;
                                       }
                                       if (addressController.text
@@ -2182,7 +2059,8 @@ class _FaceVerificationDialogState extends State<FaceVerificationDialog> {
             Navigator.of(context).pop(
               VerificationResult(
                 isVerified: false,
-                message: 'Face verification was unsuccessful. Please try again.',
+                message:
+                    'Face verification was unsuccessful. Please try again.',
                 similarity: 0.0,
                 maxAttemptsReached: true,
               ),
@@ -2247,7 +2125,8 @@ class _FaceVerificationDialogState extends State<FaceVerificationDialog> {
             Navigator.of(context).pop(
               VerificationResult(
                 isVerified: false,
-                message: 'Face verification was unsuccessful. Please try again.',
+                message:
+                    'Face verification was unsuccessful. Please try again.',
                 similarity: 0.0,
                 maxAttemptsReached: true,
               ),

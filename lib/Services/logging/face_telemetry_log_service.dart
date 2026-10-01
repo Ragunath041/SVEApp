@@ -1,5 +1,3 @@
-import 'supervisor_audit_log_service.dart';
-
 /// Handles recording face detection events to the single unified S3 CSV log.
 /// Routes events to S3://bitswilp-data/Supervisorapp_logs/logs.csv
 class FaceTelemetryLogService {

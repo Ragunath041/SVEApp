@@ -1,6 +1,8 @@
+// ignore_for_file: empty_catches, curly_braces_in_flow_control_structures, avoid_print, file_names
+
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import 'package:supervisorapp/Services/auth/supervisor_auth_service.dart';
@@ -10,10 +12,8 @@ import '../core/network/api_client.dart';
 class ExamDetailsService {
   // S3 Configuration
   static const String _bucketName = 'bitsexamapp';
-  static const String _modelBucketName = 'wilp-fr-model';
   static const String _excelFilePath = 'student_details/BITS-exam.csv';
   static const String _timingExcelFilePath = 'exam_details/ExamDetails.csv';
-  static const String _region = 'us-east-1';
 
   // Cache variables
   static List<List<dynamic>>? _cachedSheet;
@@ -116,11 +116,6 @@ class ExamDetailsService {
       // 1. Ensure sheet is loaded
       final sheet = await _getAndParseStudentSheet();
       if (sheet.isEmpty) return results;
-
-      if (sheet == null || sheet.isEmpty) {
-        print(' [ExamDetails] Sheet is null or empty after loading.');
-        return results;
-      }
 
       print(' [ExamDetails] Sheet loaded with ${sheet.length} rows.');
 
@@ -524,10 +519,7 @@ class ExamDetailsService {
 
       final response = await ApiClient.sendAction(
         action: 'getQuestionSlots',
-        payload: {
-          'courseCode': formattedCode,
-          'date': date,
-        },
+        payload: {'courseCode': formattedCode, 'date': date},
       );
 
       if (response['success'] == true && response['slots'] != null) {
@@ -871,7 +863,6 @@ class ExamDetailsService {
       int? courseCodeCol;
       int? examTimeCol;
       int? examTypeCol;
-      int? domainCol;
       int? courseNameCol;
 
       // Try header detection
@@ -895,14 +886,11 @@ class ExamDetailsService {
         } else if (sanitizedVal == 'EXAMTYPE' ||
             (val.contains('EXAM') && val.contains('TYPE'))) {
           examTypeCol = i;
-        } else if (sanitizedVal == 'DOMAIN' || val.contains('DOMAIN')) {
-          domainCol = i;
         }
       }
 
       // Fallback
       if (courseCodeCol == null) {
-        domainCol = 0;
         courseCodeCol = 1;
         courseNameCol = 2;
         examTypeCol = 4;
@@ -1163,7 +1151,9 @@ class ExamDetailsService {
             : DateFormat('h a');
         final dt = format.parse(time);
         return DateFormat('HH:mm:ss').format(dt);
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('[ExamDetailsService] Time normalization fallback for "$time": $e');
+      }
     }
 
     // Handle HH:mm or HH:mm:ss

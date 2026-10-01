@@ -8,11 +8,13 @@ class FacePainter extends CustomPainter {
   FacePainter(
       {required this.imageSize,
       this.face,
+      this.hasGlare = false,
       required this.indicatorShape,
       this.indicatorAssetImage});
   final Size imageSize;
   double? scaleX, scaleY;
   final Face? face;
+  final bool hasGlare;
   final IndicatorShape indicatorShape;
   final String? indicatorAssetImage;
   @override
@@ -22,6 +24,11 @@ class FacePainter extends CustomPainter {
     Paint paint;
 
     bool isWellPositioned = true;
+
+    // Turn indicator red if glare is present
+    if (hasGlare) {
+      isWellPositioned = false;
+    }
 
     // Check angle Y (yaw)
     if (face!.headEulerAngleY != null &&
@@ -139,7 +146,9 @@ class FacePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(FacePainter oldDelegate) {
-    return oldDelegate.imageSize != imageSize || oldDelegate.face != face;
+    return oldDelegate.imageSize != imageSize ||
+        oldDelegate.face != face ||
+        oldDelegate.hasGlare != hasGlare;
   }
 }
 

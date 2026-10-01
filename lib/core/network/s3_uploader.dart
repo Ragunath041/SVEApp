@@ -130,6 +130,14 @@ class S3Uploader {
               .toString();
         });
       }
+      if (metadata.containsKey('pageCount') &&
+          !uploadHeaders.containsKey('x-amz-meta-pages')) {
+        uploadHeaders['x-amz-meta-pages'] = metadata['pageCount'].toString();
+      }
+      if (metadata.containsKey('pages') &&
+          !uploadHeaders.containsKey('x-amz-meta-pages')) {
+        uploadHeaders['x-amz-meta-pages'] = metadata['pages'].toString();
+      }
       if (headers != null) {
         uploadHeaders.addAll(headers);
       }

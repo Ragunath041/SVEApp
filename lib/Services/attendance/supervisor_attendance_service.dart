@@ -60,7 +60,9 @@ class SupervisorAttendanceService {
                 timeLimit: Duration(seconds: 5),
               ),
             );
-          } catch (_) {}
+          } catch (e) {
+            debugPrint('[AttendanceService] Medium-accuracy GPS fallback also failed: $e');
+          }
         }
       }
 

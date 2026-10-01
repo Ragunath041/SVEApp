@@ -14,7 +14,9 @@ class ExamProgressService {
     required String sessionType,
   }) async {
     try {
-      debugPrint(' [ExamProgressService] Initializing record for $bitsId (Attendance: $attendanceId)');
+      debugPrint(
+        ' [ExamProgressService] Initializing record for $bitsId (Attendance: $attendanceId)',
+      );
 
       final response = await ApiClient.sendAction(
         action: 'initFinishedRecord',
@@ -50,7 +52,9 @@ class ExamProgressService {
   }) async {
     try {
       if (questionNumber < 1 || questionNumber > 15) {
-        debugPrint(' [ExamProgressService] Invalid question number: $questionNumber');
+        debugPrint(
+          ' [ExamProgressService] Invalid question number: $questionNumber',
+        );
         return false;
       }
 
@@ -74,13 +78,19 @@ class ExamProgressService {
 
       final success = response['success'] == true;
       if (success) {
-        debugPrint(' [ExamProgressService] Question $questionNumber updated successfully');
+        debugPrint(
+          ' [ExamProgressService] Question $questionNumber updated successfully',
+        );
       } else {
-        debugPrint(' [ExamProgressService] Update failed: ${response['error']}');
+        debugPrint(
+          ' [ExamProgressService] Update failed: ${response['error']}',
+        );
       }
       return success;
     } catch (e) {
-      debugPrint(' [ExamProgressService] Error updating question timestamp: $e');
+      debugPrint(
+        ' [ExamProgressService] Error updating question timestamp: $e',
+      );
       return false;
     }
   }

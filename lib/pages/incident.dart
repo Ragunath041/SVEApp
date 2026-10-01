@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/pages/camera_capture_page.dart';
 import 'package:supervisorapp/widgets/footer.dart';
@@ -6,7 +8,7 @@ import 'package:supervisorapp/Services/CourseNameService.dart';
 
 class IncidentReportPage extends StatefulWidget {
   final String centre;
-  const IncidentReportPage({Key? key, required this.centre}) : super(key: key);
+  const IncidentReportPage({super.key, required this.centre});
 
   @override
   State<IncidentReportPage> createState() => _IncidentReportPageState();
@@ -44,7 +46,10 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
   bool _isLoadingCourseName = false;
 
   // Track session for each course code
-  Map<String, String> _courseSessionMap = {};
+  final Map<String, String> _courseSessionMap = {};
+
+  // Local map of courseCode → courseName (populated from exam data, avoids extra backend call)
+  final Map<String, String> _courseNameMap = {};
 
   final List<String> offenceOptions = [
     'With a device - mobile phone / smart watch / earphones / earpods',
@@ -200,8 +205,6 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
 
   void _onCourseCodeFocusChanged() {
     if (courseCodeFocusNode.hasFocus) {
-      final query = courseCodeController.text.trim().toUpperCase();
-
       setState(() {
         // ALWAYS show all available course codes when focused,
         // so user can change from current selection.
@@ -248,12 +251,23 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
           rawExams ?? [],
         );
 
+        // Build local courseCode→courseName map from already-loaded exam data
+        final Map<String, String> nameMap = {};
+        for (final exam in exams) {
+          final code = exam['fullCourseCode'] ?? '';
+          final name = exam['courseName'] ?? '';
+          if (code.isNotEmpty && name.isNotEmpty) {
+            nameMap[code] = name;
+          }
+        }
+
         final courseCodes = exams
             .map((exam) => exam['fullCourseCode'] ?? '')
             .where((code) => code.isNotEmpty)
             .toList();
 
         print(' [IncidentPage] Extracted Course Codes: $courseCodes');
+        print(' [IncidentPage] Local course name map: $nameMap');
 
         // Extract city name from centre field
         String cityName = '';
@@ -285,6 +299,9 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
           centreNameController.text = centreName;
           _availableCourseCodes = courseCodes;
           _filteredCourseCodes = courseCodes;
+          _courseNameMap
+            ..clear()
+            ..addAll(nameMap);
 
           courseCodeController.text = '';
           courseNameController.text = '';
@@ -581,7 +598,7 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
           // Loading overlay with blur
           if (_isLoadingStudentDetails || _isLoadingCourseName)
             Container(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               child: Center(
                 child: Container(
                   padding: EdgeInsets.all(32),
@@ -590,7 +607,7 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -696,7 +713,7 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
               border: Border.all(color: Colors.grey.shade300),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 8,
                   offset: Offset(0, 2),
                 ),
@@ -851,7 +868,7 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
               border: Border.all(color: Colors.grey.shade300),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 8,
                   offset: Offset(0, 2),
                 ),
@@ -872,8 +889,16 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
                     });
                     courseCodeFocusNode.unfocus();
 
-                    // Fetch course name using the shared method
-                    await _fetchCourseName(courseCode);
+                    // Use locally-stored course name first (from exam data already loaded)
+                    final localName = _courseNameMap[courseCode];
+                    if (localName != null && localName.isNotEmpty) {
+                      setState(() {
+                        courseNameController.text = localName;
+                      });
+                    } else {
+                      // Fallback: fetch from backend only if not in local map
+                      await _fetchCourseName(courseCode);
+                    }
                   },
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -952,7 +977,7 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
         ),
         SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           isExpanded: true, // Prevents overflow
           decoration: InputDecoration(
             hintText: hint,
@@ -1004,7 +1029,9 @@ class _IncidentReportPageState extends State<IncidentReportPage> {
         anyOtherDetailsController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Please provide details for the 'Any other' offence description."),
+          content: Text(
+            "Please provide details for the 'Any other' offence description.",
+          ),
           backgroundColor: Colors.red.shade600,
         ),
       );

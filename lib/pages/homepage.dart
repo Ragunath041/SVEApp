@@ -1,21 +1,20 @@
+// ignore_for_file: empty_catches, use_build_context_synchronously
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/Services/ExcelService.dart';
 import 'package:supervisorapp/pages/ExamDashboard.dart';
 import 'package:supervisorapp/pages/modifyRegister.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supervisorapp/widgets/UploadAnswerSheetDialog.dart';
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/pages/login.dart';
 import 'package:supervisorapp/pages/incident_logs_page.dart';
 import 'package:supervisorapp/Services/StorageService.dart';
 import 'package:supervisorapp/pages/AttendanceStatusPage.dart';
 import 'package:supervisorapp/pages/SessionHistoryPage.dart';
-import 'package:supervisorapp/widgets/QRScannerPage.dart';
-import 'package:supervisorapp/Services/ExamDetailsLambdaService.dart';
-import 'package:supervisorapp/pages/ExpressInterest.dart';
-import 'package:supervisorapp/pages/AllocationNotificationPage.dart';
 import 'package:supervisorapp/Services/auth/supervisor_auth_service.dart';
+import 'package:flutter/services.dart';
+import 'package:supervisorapp/Services/proctor/super_proctor_service.dart';
 
 class HomePage extends StatefulWidget {
   final String supervisorId;
@@ -40,6 +39,8 @@ class _HomePageState extends State<HomePage> {
   late String _fullName;
   late String _centre;
   late String _invigilatorType;
+  String? _superProctorCode;
+  bool _isLoadingSuperProctorCode = false;
 
   @override
   void initState() {
@@ -62,6 +63,7 @@ class _HomePageState extends State<HomePage> {
 
     // Fetch directly from DynamoDB backend (do NOT fetch from local storage)
     _fetchLiveSupervisorDetails();
+    _fetchActiveSuperProctorCode();
   }
 
   /// Fetches supervisor details directly from DynamoDB (bits-Supervisor-details)
@@ -93,113 +95,13 @@ class _HomePageState extends State<HomePage> {
             _invigilatorType = liveType;
           }
         });
-        print(
-          '[HomePage] Live supervisor details fetched from DynamoDB: Name="$_fullName", Centre="$_centre", Type="$_invigilatorType"',
-        );
+        _fetchActiveSuperProctorCode();
       } else {
-        print('[HomePage] getSupervisorDetails failed: ${liveResult['error']}');
+        debugPrint('[HomePage] Failed to fetch live supervisor details: ${liveResult['error']}');
       }
     } catch (e) {
-      print('[HomePage] Error fetching supervisor details from DynamoDB: $e');
+      debugPrint('[HomePage] Error fetching live supervisor details: $e');
     }
-  }
-
-  void _showStudentSelectionDialog({
-    required BuildContext context,
-    required String title,
-    bool isAllStudents = false,
-    required Widget Function(
-      BuildContext context,
-      String studentId,
-      Map<String, String> examDetails,
-      String? attendanceId,
-    )
-    destinationBuilder,
-  }) {
-    final navigator = Navigator.of(context);
-
-    // Show loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext loadingContext) {
-        return WillPopScope(
-          onWillPop: () async => false,
-          child: Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(
-                    color: Color.fromARGB(255, 68, 76, 231),
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    isAllStudents
-                        ? 'Loading student database...'
-                        : 'Loading student data...',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    isAllStudents
-                        ? 'This may take a few seconds'
-                        : 'Please wait',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    // Load student IDs
-    Future<List<String>> fetchIds() async {
-      if (isAllStudents) {
-        return await ExcelService.loadAllStudentIds();
-      } else {
-        return await ExcelService.loadStudentIdsFromS3();
-      }
-    }
-
-    fetchIds()
-        .then((studentIds) {
-          if (navigator.context.mounted) {
-            navigator.pop(); // Close loading dialog
-
-            // Show main dialog with loaded data
-            showDialog(
-              context: navigator.context,
-              builder: (context) => UploadAnswerSheetDialog(
-                title: title,
-                supervisorName: widget.fullName,
-                supervisorId: widget.supervisorId,
-                centre: widget.centre,
-                preloadedStudentIds: studentIds,
-                destinationBuilder: destinationBuilder,
-              ),
-            );
-          }
-        })
-        .catchError((e) {
-          if (navigator.context.mounted) {
-            navigator.pop(); // Close loading dialog
-            ScaffoldMessenger.of(navigator.context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Failed to load student data: ${e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')}',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        });
   }
 
   void _showAttendStatusSelection() async {
@@ -367,7 +269,7 @@ class _HomePageState extends State<HomePage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 32 * scale,
                 height: 32 * scale,
                 fit: BoxFit.cover,
@@ -427,7 +329,6 @@ class _HomePageState extends State<HomePage> {
                               final markKey =
                                   'attendance_${widget.supervisorId.trim()}_${date.trim()}_${sessionName.trim()}';
                               await prefs.remove(markKey);
-                              print(' [Logout] Cleared session mark: $markKey');
                             }
 
                             // Clear today's session markers for all sessions
@@ -446,11 +347,8 @@ class _HomePageState extends State<HomePage> {
                             await prefs.remove('active_session_info');
                             await prefs.remove('cached_center_timings');
                             await prefs.remove('cached_supervisor_details');
-                            print(' [Logout] Session caches cleared');
                           } catch (e) {
-                            print(
-                              ' [Logout] Failed to clear session cache: $e',
-                            );
+                            debugPrint('[HomePage] Error clearing session cache on logout: $e');
                           }
 
                           // Navigate to Login Page
@@ -521,6 +419,24 @@ class _HomePageState extends State<HomePage> {
                           : "Loading...",
                       scale,
                     ),
+                    if (SuperProctorService.isSuperProctor(
+                      _invigilatorType.isNotEmpty
+                          ? _invigilatorType
+                          : widget.invigilatorType,
+                    )) ...[
+                      if (_isLoadingSuperProctorCode) ...[
+                        SizedBox(height: 12 * scale),
+                        const Divider(height: 1),
+                        SizedBox(height: 12 * scale),
+                        _buildSuperProctorLoading(context, scale),
+                      ] else if (_superProctorCode != null &&
+                          _superProctorCode!.isNotEmpty) ...[
+                        SizedBox(height: 12 * scale),
+                        const Divider(height: 1),
+                        SizedBox(height: 12 * scale),
+                        _buildSuperProctorDisplay(context, scale),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -561,9 +477,6 @@ class _HomePageState extends State<HomePage> {
                           final markKey =
                               'attendance_${widget.supervisorId.trim()}_${date.trim()}_${sessionName.trim()}';
                           await prefs.remove(markKey);
-                          print(
-                            ' [Auto-Logout] Cleared session mark: $markKey',
-                          );
                         }
 
                         // 2. Clear all duration and timing caches
@@ -573,14 +486,12 @@ class _HomePageState extends State<HomePage> {
                         await prefs.remove('active_session_info');
                         await prefs.remove('cached_center_timings');
                         await prefs.remove('cached_supervisor_details');
-                        print(' [Auto-Logout] Session caches cleared');
                       } catch (e) {
-                        print(
-                          ' [Auto-Logout] Failed to clear session cache: $e',
-                        );
+                        debugPrint('[HomePage] Error clearing session cache after modify: $e');
                       }
 
                       // Navigate to Login Page
+                      if (!mounted) return;
                       navigator.pushAndRemoveUntil(
                         MaterialPageRoute(builder: (context) => const Login()),
                         (Route<dynamic> route) => false,
@@ -626,7 +537,7 @@ class _HomePageState extends State<HomePage> {
                           centre: _centre,
                         ),
                       ),
-                    );
+                    ).then((_) => _fetchActiveSuperProctorCode());
                   },
                   icon: Icon(Icons.dashboard_outlined, size: 22 * scale),
                   label: Text(
@@ -724,10 +635,12 @@ class _HomePageState extends State<HomePage> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
                     showDialog(
                       context: context,
                       barrierDismissible: false,
-                      builder: (context) =>
+                      builder: (dialogCtx) =>
                           const Center(child: CircularProgressIndicator()),
                     );
 
@@ -738,13 +651,12 @@ class _HomePageState extends State<HomePage> {
                           );
 
                       if (!mounted) return;
-                      Navigator.pop(context);
+                      navigator.pop();
 
                       if (result['success'] == true) {
-                        Navigator.push(
-                          context,
+                        navigator.push(
                           MaterialPageRoute(
-                            builder: (context) => SessionHistoryPage(
+                            builder: (navContext) => SessionHistoryPage(
                               initialSessionName:
                                   result['session'] ?? 'Current',
                               initialHistoryData:
@@ -756,7 +668,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         );
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(
                               result['error'] ??
@@ -767,7 +679,7 @@ class _HomePageState extends State<HomePage> {
                         );
                       }
                     } catch (e) {
-                      if (mounted) Navigator.pop(context);
+                      if (mounted) navigator.pop();
                       debugPrint('Error fetching session history: $e');
                     }
                   },
@@ -905,6 +817,188 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Fetches or auto-generates the active Super Proctor Code for the current exam session.
+  /// Pre-condition: Only generates/displays for "Super Proctor", never for "Invigilator" or "BITS observer".
+  Future<void> _fetchActiveSuperProctorCode() async {
+    try {
+      final effectiveType = _invigilatorType.isNotEmpty
+          ? _invigilatorType
+          : widget.invigilatorType;
+
+      // 1. Role validation check: Only proceed for Super Proctor
+      if (!SuperProctorService.isSuperProctor(effectiveType)) {
+        if (mounted) {
+          setState(() {
+            _superProctorCode = null;
+            _isLoadingSuperProctorCode = false;
+          });
+        }
+        return;
+      }
+
+      final effectiveCentre = _centre.isNotEmpty ? _centre : widget.centre;
+      if (effectiveCentre.isEmpty) return;
+
+      if (mounted && _superProctorCode == null) {
+        setState(() {
+          _isLoadingSuperProctorCode = true;
+        });
+      }
+
+      // 2. Fetch existing or auto-generate code with GPS & submit to DynamoDB
+      final code = await SuperProctorService()
+          .getOrAutoGenerateSuperProctorCode(
+            supervisorId: widget.supervisorId,
+            centre: effectiveCentre,
+            invigilatorType: effectiveType,
+          );
+
+      if (mounted) {
+        setState(() {
+          _superProctorCode = code;
+          _isLoadingSuperProctorCode = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSuperProctorCode = false;
+        });
+      }
+      debugPrint(
+        '[HomePage] Error loading/generating active super proctor code: $e',
+      );
+    }
+  }
+
+  /// Builds a smooth loading placeholder widget while Super Proctor Code is generating
+  Widget _buildSuperProctorLoading(BuildContext context, double scale) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: 14 * scale,
+        vertical: 12 * scale,
+      ),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(255, 120, 130, 235).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color.fromARGB(
+            255,
+            120,
+            130,
+            235,
+          ).withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18 * scale,
+            height: 18 * scale,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Color.fromARGB(255, 68, 76, 231),
+              ),
+            ),
+          ),
+          SizedBox(width: 12 * scale),
+          Expanded(
+            child: Text(
+              "Generating Super Proctor Code...",
+              style: TextStyle(
+                fontSize: 13 * scale,
+                fontWeight: FontWeight.w600,
+                color: const Color.fromARGB(255, 68, 76, 231),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds a prominent Super Proctor Code display widget with copy button on HomePage
+  Widget _buildSuperProctorDisplay(BuildContext context, double scale) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: 14 * scale,
+        vertical: 10 * scale,
+      ),
+      decoration: BoxDecoration(
+        color: const Color.fromARGB(255, 120, 130, 235).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color.fromARGB(
+            255,
+            120,
+            130,
+            235,
+          ).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(6 * scale),
+            decoration: const BoxDecoration(
+              color: Color.fromARGB(255, 68, 76, 231),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.vpn_key_rounded,
+              color: Colors.white,
+              size: 16 * scale,
+            ),
+          ),
+          SizedBox(width: 10 * scale),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Super Proctor Code",
+                  style: TextStyle(
+                    fontSize: 12 * scale,
+                    fontWeight: FontWeight.w600,
+                    color: const Color.fromARGB(255, 68, 76, 231),
+                  ),
+                ),
+                SizedBox(height: 2 * scale),
+                SelectableText(
+                  _superProctorCode ?? '',
+                  style: TextStyle(
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.copy_rounded, size: 20 * scale),
+            color: const Color.fromARGB(255, 68, 76, 231),
+            tooltip: 'Copy Code',
+            onPressed: () {
+              if (_superProctorCode != null) {
+                Clipboard.setData(ClipboardData(text: _superProctorCode!));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Super Proctor Code copied to clipboard!"),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }

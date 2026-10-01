@@ -141,10 +141,6 @@ class _SessionHistoryPageState extends State<SessionHistoryPage> {
                 itemBuilder: (context, index) {
                   final sid = studentIds[index];
                   final uploads = groupedData[sid]!;
-                  final totalPages = uploads.fold<int>(0, (sum, item) {
-                    return sum +
-                        (int.tryParse(item['pageCount'].toString()) ?? 0);
-                  });
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -188,7 +184,7 @@ class _SessionHistoryPageState extends State<SessionHistoryPage> {
                         iconColor: const Color(0xFF717680),
                         children: [
                           const Divider(height: 1, color: Color(0xFFE9EAEB)),
-                          ...uploads.map((u) => _buildDetailCard(u)).toList(),
+                          ...uploads.map((u) => _buildDetailCard(u)),
                           const SizedBox(height: 8),
                         ],
                       ),
@@ -230,7 +226,7 @@ class _SessionHistoryPageState extends State<SessionHistoryPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF444CE7).withOpacity(0.1),
+                  color: const Color(0xFF444CE7).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(

@@ -1,5 +1,6 @@
+// ignore_for_file: file_names
+
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -7,7 +8,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:http/http.dart' as http;
+import 'package:face_camera/face_camera.dart';
 import 'package:supervisorapp/Services/storage/s3_transfer_helper.dart';
 
 class FaceRecognitionServiceEnhanced {
@@ -18,7 +19,6 @@ class FaceRecognitionServiceEnhanced {
 
   static const String _embeddingKey = 'face_embedding_';
   static const int _embeddingSize = 192;
-  static const int _inputSize = 112;
 
   static const String _bucketName = 'bits-supervisorapp';
 
@@ -522,7 +522,9 @@ class FaceRecognitionServiceEnhanced {
       );
 
       if (norm > 0) {
-        for (int i = 0; i < emb.length; i++) emb[i] /= norm;
+        for (int i = 0; i < emb.length; i++) {
+          emb[i] /= norm;
+        }
       }
       return emb;
     } catch (e) {
@@ -655,7 +657,9 @@ class FaceRecognitionServiceEnhanced {
       for (int i = 0; i < bytes.length; i += 8) {
         if (i + 7 < bytes.length) {
           final buffer = ByteData(8);
-          for (int j = 0; j < 8; j++) buffer.setUint8(j, bytes[i + j]);
+          for (int j = 0; j < 8; j++) {
+            buffer.setUint8(j, bytes[i + j]);
+          }
           embedding.add(buffer.getFloat64(0, Endian.little));
         }
       }
@@ -706,7 +710,9 @@ class FaceRecognitionServiceEnhanced {
             await prefs.setString(_embeddingKey + id, encoded);
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('FaceRecognitionService: Error fetching remote embedding for $id: $e');
+      }
     }
     return encoded;
   }

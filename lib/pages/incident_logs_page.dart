@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supervisorapp/Services/incident/incident_history_service.dart';
@@ -35,6 +36,7 @@ class _IncidentLogsPageState extends State<IncidentLogsPage> {
         });
       }
     } catch (e) {
+      debugPrint('IncidentLogsPage: Error loading incident history: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -103,7 +105,9 @@ class _IncidentLogsPageState extends State<IncidentLogsPage> {
     try {
       DateTime dt = DateTime.parse(date);
       formattedDate = DateFormat('EEEE, MMM d, y').format(dt);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('IncidentLogsPage: Error formatting date $date: $e');
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,7 +275,8 @@ class _IncidentLogsPageState extends State<IncidentLogsPage> {
     try {
       DateTime dt = DateTime.parse(ts);
       return DateFormat('hh:mm a').format(dt);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('IncidentLogsPage: Error formatting timestamp $ts: $e');
       return ts;
     }
   }

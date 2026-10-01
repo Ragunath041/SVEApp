@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_conditional_assignment, avoid_print
+
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -203,7 +205,9 @@ class _LoginState extends State<Login> {
                   'registration_$storedSupervisorId',
                   jsonEncode(userData),
                 );
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('Login: Error caching registration data: $e');
+              }
 
               if (mounted) {
                 Navigator.of(context).pushReplacement(
@@ -378,7 +382,7 @@ class _LoginState extends State<Login> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,

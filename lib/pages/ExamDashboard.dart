@@ -1,22 +1,21 @@
+// ignore_for_file: use_build_context_synchronously, file_names
+
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'dart:async';
-import 'package:camera/camera.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supervisorapp/Services/auth/supervisor_auth_service.dart';
 import 'package:supervisorapp/Services/ExamDetailsService.dart';
-import 'package:supervisorapp/pages/uploadPage.dart';
 import 'package:supervisorapp/pages/incident.dart';
-import 'package:supervisorapp/pages/answer_sheet_capture.dart';
 import 'package:supervisorapp/pages/AttendanceReportUploadPage.dart';
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/widgets/UploadAnswerSheetDialog.dart';
-import 'package:supervisorapp/Services/StorageService.dart';
 import 'package:supervisorapp/pages/tabswitch_page.dart';
 import 'package:supervisorapp/Services/violation/tab_switch_service.dart';
 import 'package:supervisorapp/widgets/QRScannerPage.dart';
 import 'package:supervisorapp/Services/ExamDetailsLambdaService.dart';
+import 'package:supervisorapp/Services/proctor/super_proctor_service.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 
 class ExamDashboard extends StatefulWidget {
   final String supervisorId;
@@ -38,6 +37,7 @@ class _ExamDashboardState extends State<ExamDashboard> {
   late String _fullName;
   late String _centre;
   final DynamoDBService _dynamoDBService = DynamoDBService();
+  String? _activeSuperProctorCode;
 
   bool _hasNewNotification = false;
   int _lastLogCount = 0;
@@ -55,17 +55,19 @@ class _ExamDashboardState extends State<ExamDashboard> {
   @override
   void initState() {
     super.initState();
-    _fullName = (widget.fullName.isNotEmpty &&
+    _fullName =
+        (widget.fullName.isNotEmpty &&
             widget.fullName.toLowerCase() != 'unknown' &&
             widget.fullName != 'Supervisor')
         ? widget.fullName.trim()
         : '';
-    _centre = (widget.centre.isNotEmpty &&
-            widget.centre.toLowerCase() != 'unknown')
+    _centre =
+        (widget.centre.isNotEmpty && widget.centre.toLowerCase() != 'unknown')
         ? widget.centre.trim()
         : '';
     _fetchLiveSupervisorDetails();
     _initializeNotifications();
+    // _fetchActiveSuperProctorCode();
   }
 
   /// Fetches supervisor details directly from DynamoDB (bits-Supervisor-details)
@@ -76,10 +78,12 @@ class _ExamDashboardState extends State<ExamDashboard> {
       );
       if (liveResult['success'] == true && mounted) {
         final d = liveResult['data'] as Map<String, dynamic>;
-        final liveName =
-            (d['name'] ?? d['full_name'] ?? d['Name'])?.toString().trim();
-        final liveCentre =
-            (d['centre'] ?? d['Exam hall'] ?? d['center'])?.toString().trim();
+        final liveName = (d['name'] ?? d['full_name'] ?? d['Name'])
+            ?.toString()
+            .trim();
+        final liveCentre = (d['centre'] ?? d['Exam hall'] ?? d['center'])
+            ?.toString()
+            .trim();
 
         setState(() {
           if (liveName != null && liveName.isNotEmpty) {
@@ -89,6 +93,7 @@ class _ExamDashboardState extends State<ExamDashboard> {
             _centre = liveCentre;
           }
         });
+        // _fetchActiveSuperProctorCode();
         debugPrint(
           '[ExamDashboard] Live supervisor details fetched from DynamoDB: Name="$_fullName", Centre="$_centre"',
         );
@@ -191,60 +196,79 @@ class _ExamDashboardState extends State<ExamDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double scale = (screenWidth / 375.0).clamp(0.85, 1.15);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
+        elevation: 0,
         title: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,
               ),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
+            SizedBox(width: 10 * scale),
+            Expanded(
               child: Text(
                 'Supervisor Manager',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 17 * scale,
+                  fontWeight: FontWeight.w600,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            tooltip: 'Logout',
-            onPressed: () {
-              _showLogoutDialog(context);
-            },
-          ),
-        ],
       ),
       body: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: EdgeInsets.symmetric(
+            horizontal: 16.0 * scale,
+            vertical: 8.0 * scale,
+          ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // const SizedBox(height: 10),
-              // Title
-              const Text(
-                "Examination Dashboard",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              // Title Header
+              Center(
+                child: Text(
+                  "Examination Dashboard",
+                  style: TextStyle(
+                    fontSize: (18 * scale).clamp(16.0, 20.0),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
               ),
-              // const SizedBox(height: 30),
+              SizedBox(height: 8 * scale),
 
-              // Information Table
+              // Supervisor & Centre Information Card
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 14 * scale,
+                  vertical: 10 * scale,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   children: [
@@ -254,131 +278,133 @@ class _ExamDashboardState extends State<ExamDashboard> {
                               _fullName.toLowerCase() != 'unknown'
                           ? _fullName
                           : (widget.fullName.trim().isNotEmpty &&
-                                  widget.fullName.trim().toLowerCase() !=
-                                      'unknown'
-                              ? widget.fullName.trim()
-                              : 'Loading...'),
+                                    widget.fullName.trim().toLowerCase() !=
+                                        'unknown'
+                                ? widget.fullName.trim()
+                                : 'Loading...'),
+                      scale,
                     ),
-                    const SizedBox(height: 16),
-                    _buildInfoRow("Supervisor ID:", widget.supervisorId),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 6 * scale),
+                    _buildInfoRow("Supervisor ID:", widget.supervisorId, scale),
+                    SizedBox(height: 6 * scale),
                     _buildInfoRow(
                       "Center Name:",
                       _centre.isNotEmpty && _centre.toLowerCase() != 'unknown'
                           ? _centre
                           : (widget.centre.trim().isNotEmpty &&
-                                  widget.centre.trim().toLowerCase() !=
-                                      'unknown'
-                              ? widget.centre.trim()
-                              : 'Loading...'),
+                                    widget.centre.trim().toLowerCase() !=
+                                        'unknown'
+                                ? widget.centre.trim()
+                                : 'Loading...'),
+                      scale,
                     ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
 
-              // const SizedBox(height: 30),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _buildActionButton(
-                    icon: Icons.notifications,
-                    label: "View Notifications",
-                    backgroundColor: const Color.fromARGB(255, 120, 130, 235),
-                    foregroundColor: Colors.white,
-                    onPressed: () {
-                      setState(() {
-                        _hasNewNotification = false;
-                      });
-                      // Navigate to the Notification Page (TabSwitchPage)
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => TabSwitchPage(
-                            centre: _centre.isNotEmpty
-                                ? _centre
-                                : widget.centre,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  if (_hasNewNotification)
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.red.withOpacity(0.5),
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 14,
-                          minHeight: 14,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 5),
-
-              // Upload Incident Report Button
-              _buildActionButton(
-                icon: Icons.description,
-                label: "Upload Incident Report",
-                backgroundColor: const Color.fromARGB(255, 120, 130, 235),
-                foregroundColor: Colors.white,
-                onPressed: () {
-                  _showUploadIncidentReportDialog(context);
-                },
-              ),
-
-              const SizedBox(height: 5),
+              SizedBox(height: 10 * scale),
 
               // Upload Answer Sheet Button
               _buildActionButton(
                 icon: Icons.file_upload_outlined,
                 label: "Upload Answer Sheet",
-                backgroundColor: const Color.fromARGB(255, 120, 130, 235),
+                backgroundColor: const Color.fromARGB(255, 68, 76, 231),
                 foregroundColor: Colors.white,
                 onPressed: () {
                   _showUploadAnswerSheetWithLoading(context);
                 },
+                scale: scale,
               ),
 
-              const SizedBox(height: 5),
+              SizedBox(height: 10 * scale),
 
               // Upload Attendance Report Button
               _buildActionButton(
-                icon: Icons.assignment_ind,
+                icon: Icons.assignment_ind_outlined,
                 label: "Upload Attendance Report",
-                backgroundColor: const Color.fromARGB(255, 120, 130, 235),
+                backgroundColor: const Color.fromARGB(255, 68, 76, 231),
                 foregroundColor: Colors.white,
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => AttendanceReportUploadPage(
-                        centre: _centre.isNotEmpty
-                            ? _centre
-                            : widget.centre,
+                        centre: _centre.isNotEmpty ? _centre : widget.centre,
                         supervisorId: widget.supervisorId,
                       ),
                     ),
                   );
                 },
+                scale: scale,
               ),
 
-              const SizedBox(height: 5),
+              SizedBox(height: 10 * scale),
 
-              // Scan QR Code Button
+              // Upload Incident Report Button
+              _buildActionButton(
+                icon: Icons.description_outlined,
+                label: "Upload Incident Report",
+                backgroundColor: const Color.fromARGB(255, 68, 76, 231),
+                foregroundColor: Colors.white,
+                onPressed: () {
+                  _showUploadIncidentReportDialog(context);
+                },
+                scale: scale,
+              ),
+
+              SizedBox(height: 10 * scale),
+
+              // View Notifications Button with badge
+              _buildActionButton(
+                icon: Icons.notifications_outlined,
+                label: "View Notifications",
+                backgroundColor: const Color.fromARGB(255, 68, 76, 231),
+                foregroundColor: Colors.white,
+                trailing: _hasNewNotification
+                    ? Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 7 * scale,
+                          vertical: 2 * scale,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withValues(alpha: 0.35),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          "NEW",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9 * scale,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      )
+                    : null,
+                onPressed: () {
+                  setState(() {
+                    _hasNewNotification = false;
+                  });
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => TabSwitchPage(
+                        centre: _centre.isNotEmpty ? _centre : widget.centre,
+                      ),
+                    ),
+                  );
+                },
+                scale: scale,
+              ),
+
+              SizedBox(height: 8 * scale),
+
+              // ── QR Scan Button (old-style centered design) ──
+              const Divider(height: 1, color: Color(0xFFEEEEEE)),
               GestureDetector(
                 onTap: () async {
                   final result = await Navigator.of(context)
@@ -394,22 +420,22 @@ class _ExamDashboardState extends State<ExamDashboard> {
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 22),
-
-                  child: const Column(
+                  color: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 20 * scale),
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.qr_code_scanner,
-                        size: 30,
-                        color: Color.fromARGB(255, 120, 130, 235),
+                        size: 30 * scale,
+                        color: const Color.fromARGB(255, 120, 130, 235),
                       ),
-                      SizedBox(height: 10),
+                      SizedBox(height: 8 * scale),
                       Text(
                         "Scan QR Code",
                         style: TextStyle(
-                          color: Color.fromARGB(255, 120, 130, 235),
-                          fontSize: 15,
+                          color: const Color.fromARGB(255, 120, 130, 235),
+                          fontSize: 14 * scale,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.3,
                         ),
@@ -498,33 +524,6 @@ class _ExamDashboardState extends State<ExamDashboard> {
     }
   }
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Confirm Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                Navigator.of(
-                  context,
-                ).pushNamedAndRemoveUntil('/', (Route<dynamic> route) => false);
-              },
-              child: const Text('Logout', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   // Show Upload Incident Report Dialog
   void _showUploadIncidentReportDialog(BuildContext context) {
     showDialog(
@@ -549,12 +548,11 @@ class _ExamDashboardState extends State<ExamDashboard> {
                 // Supervisor Information
                 _buildDialogInfoRow(
                   "Supervisor Name:",
-                  _fullName.isNotEmpty &&
-                          _fullName.toLowerCase() != 'unknown'
+                  _fullName.isNotEmpty && _fullName.toLowerCase() != 'unknown'
                       ? _fullName
                       : (widget.fullName.trim().isNotEmpty
-                          ? widget.fullName.trim()
-                          : 'Supervisor'),
+                            ? widget.fullName.trim()
+                            : 'Supervisor'),
                 ),
                 SizedBox(height: 12),
                 _buildDialogInfoRow("Supervisor ID:", widget.supervisorId),
@@ -582,6 +580,14 @@ class _ExamDashboardState extends State<ExamDashboard> {
                         ),
                       );
                     },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color.fromARGB(255, 68, 76, 231),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: 0,
+                    ),
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 14),
                       child: Text(
@@ -591,157 +597,6 @@ class _ExamDashboardState extends State<ExamDashboard> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color.fromARGB(255, 68, 76, 231),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Show Upload Answer Sheet Dialog
-  void _showUploadAnswerSheetDialog(BuildContext context) {
-    final TextEditingController studentIdController = TextEditingController();
-    final BuildContext outerContext = context; // Capture the outer context
-
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Title
-                Text(
-                  "Upload Answer Sheet",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 24),
-
-                // Supervisor Information
-                _buildDialogInfoRow(
-                  "Supervisor Name:",
-                  _fullName.isNotEmpty &&
-                          _fullName.toLowerCase() != 'unknown'
-                      ? _fullName
-                      : (widget.fullName.trim().isNotEmpty
-                          ? widget.fullName.trim()
-                          : 'Supervisor'),
-                ),
-                SizedBox(height: 12),
-                _buildDialogInfoRow("Supervisor ID:", widget.supervisorId),
-                SizedBox(height: 12),
-                _buildDialogInfoRow(
-                  "Center Name:",
-                  _centre.isNotEmpty ? _centre : widget.centre,
-                ),
-
-                SizedBox(height: 24),
-                // Student ID Input
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Student ID",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 8),
-                TextField(
-                  controller: studentIdController,
-                  decoration: InputDecoration(
-                    hintText: "Enter Student ID",
-                    hintStyle: TextStyle(color: Colors.grey.shade400),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.blue.shade300),
-                    ),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
-                // Proceed Button
-                SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      final studentId = studentIdController.text.trim();
-
-                      // Validate student ID
-                      if (studentId.isEmpty) {
-                        ScaffoldMessenger.of(outerContext).showSnackBar(
-                          SnackBar(
-                            content: Text('Please enter a Student ID'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                        return;
-                      }
-
-                      // Close dialog
-                      Navigator.of(dialogContext).pop();
-
-                      // Navigate to UploadPage with required parameters
-                      Navigator.of(outerContext).push(
-                        MaterialPageRoute(
-                          builder: (context) => UploadPage(
-                            studentId: studentId,
-                            studentName: '',
-                            centreName: _centre.isNotEmpty
-                                ? _centre
-                                : widget.centre,
-                            courseCode: '',
-                            session: '',
-                            examDate: '',
-                            examType:
-                                null, // No exam type in this deprecated flow
-                          ),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Text(
-                        "Proceed",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color.fromARGB(255, 68, 76, 231),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
                     ),
                   ),
                 ),
@@ -781,20 +636,21 @@ class _ExamDashboardState extends State<ExamDashboard> {
   }
 
   // Helper method to build info rows
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, [double scale = 1.0]) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
+          style: TextStyle(fontSize: 14 * scale, color: Colors.grey.shade700),
         ),
-        SizedBox(width: 8),
+        SizedBox(width: 8 * scale),
         Expanded(
           child: Text(
             value,
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14 * scale,
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
@@ -814,36 +670,50 @@ class _ExamDashboardState extends State<ExamDashboard> {
     required Color backgroundColor,
     required Color foregroundColor,
     required VoidCallback onPressed,
+    Widget? trailing,
+    double scale = 1.0,
   }) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
         onPressed: onPressed,
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: foregroundColor),
-              SizedBox(height: 12),
-              Text(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          padding: EdgeInsets.symmetric(
+            vertical: 30 * scale,
+            horizontal: 14 * scale,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          elevation: 0,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 25 * scale, color: foregroundColor),
+            SizedBox(width: 12 * scale),
+            Expanded(
+              child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 16 * scale,
                   fontWeight: FontWeight.w600,
                   color: foregroundColor,
                 ),
               ),
+            ),
+            if (trailing != null) ...[
+              SizedBox(width: 6 * scale),
+              trailing,
+            ] else ...[
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 13 * scale,
+                color: foregroundColor.withValues(alpha: 0.6),
+              ),
             ],
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 0,
+          ],
         ),
       ),
     );
@@ -860,8 +730,8 @@ class _ExamDashboardState extends State<ExamDashboard> {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext loadingContext) {
-        return WillPopScope(
-          onWillPop: () async => false,
+        return PopScope(
+          canPop: false,
           child: Dialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -898,15 +768,15 @@ class _ExamDashboardState extends State<ExamDashboard> {
         centerFilter: _centre.isNotEmpty ? _centre : widget.centre,
       );
 
-      if (navigator.context.mounted) {
+      if (mounted) {
         navigator.pop(); // Close loading dialog
 
         // Show main dialog with pre-loaded data
         showDialog(
-          context: navigator.context,
+          context: context,
           builder: (context) => UploadAnswerSheetDialog(
-            supervisorName: _fullName.isNotEmpty &&
-                    _fullName.toLowerCase() != 'unknown'
+            supervisorName:
+                _fullName.isNotEmpty && _fullName.toLowerCase() != 'unknown'
                 ? _fullName
                 : widget.fullName,
             supervisorId: widget.supervisorId,
@@ -930,273 +800,6 @@ class _ExamDashboardState extends State<ExamDashboard> {
         );
       }
       debugPrint("Failed to load student data: $e");
-    }
-  }
-
-  // Handle Attendance Sheet Upload
-  void _handleUploadAttendanceSheet(BuildContext context) async {
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("No camera available on this device."),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      List<String> capturedImages = [];
-      bool addingImages = true;
-
-      while (addingImages) {
-        // Navigate to a dedicated capture screen
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) =>
-                AnswerSheetCameraScreen(camera: cameras.first),
-          ),
-        );
-
-        // If user backs out of camera without capturing
-        if (result == null) {
-          if (capturedImages.isEmpty) {
-            return; // Cancelled completely
-          }
-          // If they have images, ask if they want to stop or continue?
-          // For now, let's assume backing out means they are done capturing if they have images.
-          bool? confirmStop = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: Text("Stop Capturing?"),
-              content: Text(
-                "Do you want to submit the ${capturedImages.length} captured page(s) or cancel?",
-              ),
-              actions: [
-                TextButton(
-                  child: Text("Cancel All"),
-                  onPressed: () => Navigator.pop(ctx, false),
-                ),
-                TextButton(
-                  child: Text("Submit Captured"),
-                  onPressed: () => Navigator.pop(ctx, true),
-                ),
-              ],
-            ),
-          );
-
-          if (confirmStop == true) {
-            addingImages = false;
-            break;
-          } else if (confirmStop == false) {
-            return; // Cancel everything
-          } else {
-            continue; // Dismissed dialog, maybe go back to camera? Or just stop.
-          }
-        }
-
-        if (result is String) {
-          if (!context.mounted) return;
-
-          // Show confirmation/accept-reject dialog for THIS IMAGE
-          final accepted = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (BuildContext dialogContext) {
-              return Dialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(16),
-                      ),
-                      child: Image.file(
-                        File(result),
-                        height: 300,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(false),
-                              icon: Icon(Icons.close, color: Colors.red),
-                              label: Text(
-                                "Retake",
-                                style: TextStyle(color: Colors.red),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.shade50,
-                                elevation: 0,
-                                padding: EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: BorderSide(color: Colors.red.shade200),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(true),
-                              icon: Icon(Icons.check, color: Colors.white),
-                              label: Text(
-                                "Keep",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                elevation: 0,
-                                padding: EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-
-          if (accepted == true) {
-            capturedImages.add(result);
-
-            // Ask to add more
-            if (!context.mounted) return;
-            final wantMore = await showDialog<bool>(
-              context: context,
-              barrierDismissible: false,
-              builder: (ctx) => AlertDialog(
-                title: Text("Page Added"),
-                content: Text(
-                  "You have captured ${capturedImages.length} page. Do you want to add another page ?",
-                ),
-                actions: [
-                  TextButton(
-                    child: Text("No"),
-                    onPressed: () => Navigator.pop(ctx, false),
-                  ),
-                  TextButton(
-                    child: Text("Yes"),
-                    onPressed: () => Navigator.pop(ctx, true),
-                  ),
-                ],
-              ),
-            );
-
-            if (wantMore != true) {
-              addingImages = false;
-            }
-          } else {
-            // Retake - just loop again
-            continue;
-          }
-        }
-      } // end while
-
-      if (capturedImages.isEmpty) return;
-
-      if (!context.mounted) return;
-
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (c) => Center(child: CircularProgressIndicator()),
-      );
-
-      try {
-        // Determine session
-        final now = DateTime.now();
-        String session = "FN";
-        final hour = now.hour;
-        if (hour >= 13 && hour < 18) {
-          session = "AN";
-        } else if (hour >= 18) {
-          session = "EN"; // Just in case
-        }
-
-        final dateStr = DateFormat('yyyy-MM-dd').format(now);
-
-        final storageService = StorageService();
-        final uploadResult = await storageService.uploadAttendanceSheetImages(
-          // Use new multi-image method
-          imagePaths: capturedImages,
-          date: dateStr,
-          session: session,
-          centre: _centre.isNotEmpty ? _centre : widget.centre,
-        );
-        storageService.dispose();
-
-        if (context.mounted) Navigator.pop(context); // Close loading
-
-        if (uploadResult['success'] == true) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  uploadResult['message'] ??
-                      "Attendance sheets uploaded successfully!",
-                ),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  "Upload failed: ${uploadResult['error'] ?? 'Please try again.'}",
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        debugPrint("Attendance upload system error: $e");
-        if (context.mounted) Navigator.pop(context); // Close loading
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "Failed to upload attendance sheets. Please check your connection and try again.",
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Could not access camera. Please check permissions."),
-            backgroundColor: Colors.red,
-          ),
-        );
-        debugPrint("Camera access error: $e");
-      }
     }
   }
 }

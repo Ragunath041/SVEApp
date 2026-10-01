@@ -12,11 +12,12 @@ import 'package:intl/intl.dart';
 class CameraCaptureFlow extends StatefulWidget {
   final Map<String, String> formData;
 
-  const CameraCaptureFlow({Key? key, required this.formData}) : super(key: key);
+  const CameraCaptureFlow({super.key, required this.formData});
 
   @override
   State<CameraCaptureFlow> createState() => _CameraCaptureFlowState();
 }
+
 
 class _CameraCaptureFlowState extends State<CameraCaptureFlow> {
   @override
@@ -102,11 +103,11 @@ class _CameraCaptureFlowState extends State<CameraCaptureFlow> {
   Future<void> _openCamera() async {
     try {
       final cameras = await availableCameras();
+      if (!mounted) return;
       if (cameras.isEmpty) {
-        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("No camera available on this device."),
+            content: const Text("No camera available on this device."),
             backgroundColor: Colors.red.shade600,
           ),
         );
@@ -121,6 +122,8 @@ class _CameraCaptureFlowState extends State<CameraCaptureFlow> {
         ),
       );
 
+      if (!mounted) return;
+
       if (result != null && result is String) {
         _showAcceptRejectDialog(result);
       } else {
@@ -131,7 +134,7 @@ class _CameraCaptureFlowState extends State<CameraCaptureFlow> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: const Text(
             "Failed to access camera. Please check camera permissions in Settings.",
           ),
           backgroundColor: Colors.red.shade600,
@@ -312,9 +315,10 @@ class _CameraScreenState extends State<CameraScreen> {
       final image = await _controller.takePicture();
       await File(image.path).copy(imagePath);
 
+      if (!mounted) return;
       Navigator.pop(context, imagePath);
     } catch (e) {
-      print('Failed taking picture: $e');
+      debugPrint('Failed taking picture: $e');
     }
   }
 
@@ -395,6 +399,7 @@ class _ImageSelectionPageState extends State<ImageSelectionPage> {
   Future<void> _addMoreImages() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
+    if (!mounted) return;
 
     final result = await Navigator.push(
       context,
@@ -402,6 +407,8 @@ class _ImageSelectionPageState extends State<ImageSelectionPage> {
         builder: (context) => CameraScreen(camera: cameras.first),
       ),
     );
+
+    if (!mounted) return;
 
     if (result != null && result is String) {
       setState(() {

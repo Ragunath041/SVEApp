@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use, avoid_print, file_names
+
 import 'package:flutter/material.dart';
 import 'package:supervisorapp/widgets/footer.dart';
 import 'package:supervisorapp/Services/StorageService.dart';
@@ -112,7 +114,9 @@ class _ModifyRegisterState extends State<ModifyRegister> {
         }
         return;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('ModifyRegister: Error loading centres from cache: $e');
+    }
 
     // Nothing in cache either
     if (mounted) {
@@ -207,7 +211,8 @@ class _ModifyRegisterState extends State<ModifyRegister> {
           _isUpdating = false;
         });
         _showErrorDialog(
-          dynamoResult['error'] ?? 'Unable to update profile. Please try again.',
+          dynamoResult['error'] ??
+              'Unable to update profile. Please try again.',
         );
         debugPrint('DynamoDB Update Failed: ${dynamoResult['error']}');
         return;
@@ -258,7 +263,7 @@ class _ModifyRegisterState extends State<ModifyRegister> {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Image.asset(
-                'assets/images/company_logo.png',
+                'assets/images/company_logo.webp',
                 width: 35,
                 height: 35,
                 fit: BoxFit.cover,
