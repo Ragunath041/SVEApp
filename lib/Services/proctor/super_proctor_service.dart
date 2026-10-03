@@ -135,64 +135,45 @@ class SuperProctorService {
     final now = date ?? DateTime.now();
     final datePart = DateFormat('ddMMyyyy').format(now);
     final sessionPart = session.trim().toUpperCase();
-
-    // 1. First 2 characters from Supervisor ID (e.g. SP)
     final prefix = cleanId.length >= 2
         ? cleanId.substring(0, 2)
         : cleanId.padRight(2, 'S');
-
-    // 2. Last 2 characters from Session (e.g. FN, AN, EN)
     final suffix = sessionPart.length >= 2
         ? sessionPart.substring(0, 2)
         : sessionPart.padRight(2, 'X');
-
-    // 3. Middle 4 unique/random characters from the entropy components
     final entropyPool = '$cleanId$latPart$longPart$datePart$sessionPart';
     final chars = entropyPool.split('');
     final rng = Random(entropyPool.hashCode);
     chars.shuffle(rng);
     final middle = chars.take(4).join('');
-
-    // Final 8-character unique code: [Prefix 2] + [Middle 4] + [Session 2]
     return '$prefix$middle$suffix';
   }
 
-  /// Parses a time string (e.g. "09:30", "14:00", "02:00 PM", "9:30 AM") to minutes from midnight
   static int? parseTimeToMinutes(String? timeStr) {
     if (timeStr == null || timeStr.trim().isEmpty) return null;
     final raw = timeStr.trim().toUpperCase();
-
     final isPM = raw.contains('PM');
     final isAM = raw.contains('AM');
-
     final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(raw);
     if (match == null) return null;
-
     int hours = int.tryParse(match.group(1)!) ?? 0;
     int minutes = int.tryParse(match.group(2)!) ?? 0;
-
     if (isPM && hours < 12) hours += 12;
     if (isAM && hours == 12) hours = 0;
-
     return hours * 60 + minutes;
   }
 
-  /// Checks whether there is an active exam session right now at this centre.
-  /// Allowed access window: strictly in between exam start time and exam end time (0-min buffer).
-  /// Returns the active ExamSessionWindow if inside an active window, or null if outside.
   Future<ExamSessionWindow?> getActiveExamSession(
     String centre, {
     DateTime? now,
   }) async {
     final currentTime = now ?? DateTime.now();
     final nowMinutes = currentTime.hour * 60 + currentTime.minute;
-
     final Map<String, List<String>> sessionDefaults = {
       'FN': ['09:30', '12:30'],
       'AN': ['14:00', '17:00'],
       'EN': ['18:00', '21:00'],
     };
-
     Map<String, String> dbTimings = {};
     if (centre.isNotEmpty) {
       try {
@@ -204,8 +185,6 @@ class SuperProctorService {
         debugPrint(' [SuperProctorService] Error fetching center timings: $e');
       }
     }
-
-    // Strictly active ONLY in between exam start time and exam end time
     for (final s in ['FN', 'AN', 'EN']) {
       final startStr = dbTimings['${s}_start']?.isNotEmpty == true
           ? dbTimings['${s}_start']!
@@ -213,11 +192,8 @@ class SuperProctorService {
       final endStr = dbTimings['${s}_end']?.isNotEmpty == true
           ? dbTimings['${s}_end']!
           : sessionDefaults[s]![1];
-
       final startMin = parseTimeToMinutes(startStr) ?? 0;
       final endMin = parseTimeToMinutes(endStr) ?? 1440;
-
-      // Active strictly in between exam start time and exam end time
       if (nowMinutes >= startMin && nowMinutes <= endMin) {
         return ExamSessionWindow(
           session: s,
@@ -229,7 +205,6 @@ class SuperProctorService {
         );
       }
     }
-
     return null;
   }
 
@@ -240,10 +215,6 @@ class SuperProctorService {
     return clean == 'super proctor' || clean == 'superproctor';
   }
 
-  /// Automatically validates role, checks active exam session, and gets/generates Super Proctor Code.
-  /// - ONLY generates and returns code if role is "Super Proctor" (not for Invigilator or BITS Observer).
-  /// - Automatically reuses code if already exists in DynamoDB for today's session.
-  /// - Automatically generates and saves new code to DynamoDB if it does not exist yet.
   Future<String?> getOrAutoGenerateSuperProctorCode({
     required String supervisorId,
     required String centre,
@@ -257,10 +228,8 @@ class SuperProctorService {
     if (centre.trim().isEmpty || supervisorId.trim().isEmpty) {
       return null;
     }
-
     final now = DateTime.now();
     final todayDate = DateFormat('dd-MM-yyyy').format(now);
-
     // 2. Check if an exam is currently active
     final activeSession = await getActiveExamSession(centre.trim(), now: now);
     if (activeSession == null) {
@@ -298,8 +267,6 @@ class SuperProctorService {
     return null;
   }
 
-  /// Fetches the currently active code for today's active exam session directly from DynamoDB backend.
-  /// Does NOT rely on local storage — DynamoDB is the sole source of truth.
   Future<String?> getActiveExamCode({
     required String centre,
     required String supervisorId,
@@ -310,19 +277,19 @@ class SuperProctorService {
     // 1. Check if an exam is currently active
     final activeSession = await getActiveExamSession(centre, now: now);
     if (activeSession == null) {
-      // Clear any legacy local key if present
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('active_superproctor_code_$supervisorId');
         await prefs.remove('active_superproctor_date_$supervisorId');
         await prefs.remove('active_superproctor_session_$supervisorId');
       } catch (e) {
-        debugPrint('SuperProctorService: Error clearing legacy local prefs: $e');
+        debugPrint(
+          'SuperProctorService: Error clearing legacy local prefs: $e',
+        );
       }
       return null;
     }
 
-    // 2. Clear any legacy local cache so only DynamoDB is trusted
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('active_superproctor_code_$supervisorId');
@@ -330,7 +297,7 @@ class SuperProctorService {
       debugPrint('SuperProctorService: Error clearing legacy local code: $e');
     }
 
-    // 3. Check DynamoDB backend directly
+    // 2. Check DynamoDB backend directly
     final existingData = await fetchExistingSuperProctorCode(
       centre: centre,
       session: activeSession.session,
