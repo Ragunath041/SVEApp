@@ -46,8 +46,6 @@ class _UploadPageState extends State<UploadPage> {
   List<String> _questionSlots = [];
   bool _isLoadingSlots = true;
   String? _selectedSlot; // Track the currently selected question slot
-  bool _showImagesPreview =
-      true; // Track whether to show captured images preview
 
   // Track captured images for each slot
   // Key: Slot name (e.g. "Q1"), Value: List of image paths
@@ -71,10 +69,17 @@ class _UploadPageState extends State<UploadPage> {
     if (savedData != null) {
       try {
         final Map<String, dynamic> decoded = json.decode(savedData);
+        final Map<String, List<String>> loadedMap = {};
+
+        decoded.forEach((slotKey, listValue) {
+          final list = List<String>.from(listValue);
+          if (list.isNotEmpty) {
+            loadedMap[slotKey] = list;
+          }
+        });
+
         setState(() {
-          _capturedImagesPerSlot = decoded.map(
-            (key, value) => MapEntry(key, List<String>.from(value)),
-          );
+          _capturedImagesPerSlot = loadedMap;
         });
         print(' Loaded saved images: $_capturedImagesPerSlot');
       } catch (e) {
@@ -133,6 +138,232 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
+  List<int> _findIssueImageIndices(String slot) {
+    final images = _capturedImagesPerSlot[slot] ?? [];
+    final List<int> issueIndices = [];
+    for (int i = 0; i < images.length; i++) {
+      final f = File(images[i]);
+      if (!f.existsSync() || f.lengthSync() < 1024) {
+        issueIndices.add(i);
+      }
+    }
+    return issueIndices;
+  }
+
+  Future<void> _startGuidedRecapture(
+    String slot,
+    List<int> issueIndices,
+  ) async {
+    if (issueIndices.isEmpty) return;
+
+    List<String> currentImages = List<String>.from(
+      _capturedImagesPerSlot[slot] ?? [],
+    );
+
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+
+      int successCount = 0;
+
+      for (int step = 0; step < issueIndices.length; step++) {
+        final targetIndex = issueIndices[step];
+        if (targetIndex < 0 || targetIndex >= currentImages.length) continue;
+
+        final pageNum = targetIndex + 1;
+        final stepNum = step + 1;
+        final totalSteps = issueIndices.length;
+
+        if (!mounted) return;
+
+        // Open camera for this specific page with indicator HUD
+        final capturedPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AnswerSheetCameraScreen(
+              camera: cameras.first,
+              title: "Re-capturing Page $pageNum of ${currentImages.length}",
+              subtitle: "Issue $stepNum of $totalSteps for $slot",
+            ),
+          ),
+        );
+
+        if (capturedPath == null || capturedPath.isEmpty) {
+          // If user cancelled, break out but preserve progress
+          break;
+        }
+
+        if (!mounted) return;
+
+        // Crop the captured replacement photo with page indicator
+        final croppedResult = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ImageCropperPage(
+              image: XFile(capturedPath),
+              title: "Crop Page $pageNum",
+              subtitle: "Page $pageNum for $slot (Step $stepNum of $totalSteps)",
+            ),
+          ),
+        );
+
+        String finalPath = capturedPath;
+        if (croppedResult != null && croppedResult is XFile) {
+          try {
+            final rawF = File(capturedPath);
+            if (rawF.existsSync()) rawF.deleteSync();
+          } catch (_) {}
+          finalPath = croppedResult.path;
+        }
+
+        // Delete the old corrupted/replaced file from disk
+        final oldPath = currentImages[targetIndex];
+        try {
+          final oldF = File(oldPath);
+          if (oldF.existsSync()) {
+            oldF.deleteSync();
+          }
+        } catch (e) {
+          debugPrint("Error deleting old replaced file: $e");
+        }
+
+        // Replace at the exact target index
+        currentImages[targetIndex] = finalPath;
+        successCount++;
+
+        // Save immediately
+        setState(() {
+          _capturedImagesPerSlot[slot] = List<String>.from(currentImages);
+        });
+        await _saveCapturedImages();
+      }
+
+      if (mounted && successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    successCount == 1
+                        ? 'Page ${issueIndices.first + 1} recaptured successfully!'
+                        : '$successCount pages recaptured and placed in order!',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error in guided recapture: $e");
+    }
+  }
+
+  void _showMultiIssueDialog({
+    required String slot,
+    required List<int> issueIndices,
+    String? customError,
+  }) {
+    final pageNumbersText = issueIndices.map((i) => "Page ${i + 1}").join(", ");
+    final totalIssues = issueIndices.length;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.amber.shade800,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                totalIssues == 1
+                    ? "Page Issue Detected"
+                    : "Multiple Issues Detected",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              totalIssues == 1
+                  ? "Found an issue with $pageNumbersText for $slot (missing or in Bytes)."
+                  : "Found issues in $totalIssues pages for $slot:\n$pageNumbersText (missing or in Bytes).",
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              totalIssues == 1
+                  ? "Would you like to re-capture $pageNumbersText to replace it in position ${issueIndices.first + 1}?"
+                  : "Please re-capture these $totalIssues pages one by one to place them in their correct positions.",
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(
+              "Cancel",
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF444CE7),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () {
+              Navigator.of(dialogCtx).pop();
+              _startGuidedRecapture(slot, issueIndices);
+            },
+            icon: const Icon(Icons.camera_alt, size: 18),
+            label: Text(
+              totalIssues == 1
+                  ? "Re-capture $pageNumbersText"
+                  : "Re-capture ($totalIssues Pages)",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Show images in a dialog
   void _showImagesDialog() {
     showDialog(
@@ -156,11 +387,14 @@ class _UploadPageState extends State<UploadPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Captured Images for $_selectedSlot',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Text(
+                          'Captured Images for $_selectedSlot',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       IconButton(
@@ -199,6 +433,28 @@ class _UploadPageState extends State<UploadPage> {
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 6,
+                            left: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.65),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                "Page ${index + 1}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
@@ -252,6 +508,10 @@ class _UploadPageState extends State<UploadPage> {
 
                                 if (croppedResult != null &&
                                     croppedResult is XFile) {
+                                  try {
+                                    final oldF = File(imagePath);
+                                    if (oldF.existsSync()) oldF.deleteSync();
+                                  } catch (_) {}
                                   setState(() {
                                     _capturedImagesPerSlot[_selectedSlot!]![index] =
                                         croppedResult.path;
@@ -319,69 +579,83 @@ class _UploadPageState extends State<UploadPage> {
                   ),
                 ),
 
-                // Add More Button
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.of(dialogContext).pop(); // Close dialog
+                // Add More Button (hidden for Front Page)
+                if (!(_selectedSlot
+                        ?.toLowerCase()
+                        .replaceAll(' ', '')
+                        .contains('front') ??
+                    false)) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(dialogContext).pop(); // Close dialog
 
-                        final existingImages =
-                            _capturedImagesPerSlot[_selectedSlot!];
-                        print(
-                          ' Add More: Existing images count: ${existingImages?.length ?? 0}',
-                        );
-                        print(' Add More: Existing images: $existingImages');
+                          final existingImages =
+                              _capturedImagesPerSlot[_selectedSlot!];
+                          final bool isFrontPage =
+                              _selectedSlot
+                                  ?.toLowerCase()
+                                  .replaceAll(' ', '')
+                                  .contains('front') ??
+                              false;
+                          print(
+                            ' Add More: Existing images count: ${existingImages?.length ?? 0}',
+                          );
+                          print(' Add More: Existing images: $existingImages');
 
-                        // Open camera with existing images
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AnswerSheetCaptureFlow(
-                              studentId: widget.studentId,
-                              studentName: widget.studentName,
-                              centreName: widget.centreName,
-                              courseCode: widget.courseCode,
-                              existingImages:
-                                  _capturedImagesPerSlot[_selectedSlot!],
+                          // Open camera with existing images
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AnswerSheetCaptureFlow(
+                                studentId: widget.studentId,
+                                studentName: widget.studentName,
+                                centreName: widget.centreName,
+                                courseCode: widget.courseCode,
+                                existingImages:
+                                    _capturedImagesPerSlot[_selectedSlot!],
+                                singlePageOnly: isFrontPage,
+                                slotName: _selectedSlot,
+                              ),
                             ),
+                          );
+
+                          print(' Add More: Returned result: $result');
+                          print(
+                            ' Add More: Result length: ${result is List ? result.length : 'not a list'}',
+                          );
+
+                          if (result != null && result is List) {
+                            setState(() {
+                              _capturedImagesPerSlot[_selectedSlot!] =
+                                  List<String>.from(result);
+                            });
+                            _saveCapturedImages();
+                          }
+                        },
+                        icon: Icon(Icons.add_a_photo, size: 18),
+                        label: Text(
+                          'Add More',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
-                        );
-
-                        print(' Add More: Returned result: $result');
-                        print(
-                          ' Add More: Result length: ${result is List ? result.length : 'not a list'}',
-                        );
-
-                        if (result != null && result is List) {
-                          setState(() {
-                            _capturedImagesPerSlot[_selectedSlot!] =
-                                List<String>.from(result);
-                          });
-                          _saveCapturedImages();
-                        }
-                      },
-                      icon: Icon(Icons.add_a_photo, size: 18),
-                      label: Text(
-                        'Add More',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -831,6 +1105,13 @@ class _UploadPageState extends State<UploadPage> {
                                   ' Opening camera for slot: $_selectedSlot',
                                 );
 
+                                final bool isFrontPage =
+                                    _selectedSlot
+                                        ?.toLowerCase()
+                                        .replaceAll(' ', '')
+                                        .contains('front') ??
+                                    false;
+
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -841,6 +1122,8 @@ class _UploadPageState extends State<UploadPage> {
                                           centreName: widget.centreName,
                                           courseCode: widget.courseCode,
                                           existingImages: [],
+                                          singlePageOnly: isFrontPage,
+                                          slotName: _selectedSlot,
                                         ),
                                   ),
                                 );
@@ -926,6 +1209,18 @@ class _UploadPageState extends State<UploadPage> {
                                   false))
                           ? null
                           : () async {
+                              final slotToUpload = _selectedSlot!;
+                              final issueIndices = _findIssueImageIndices(
+                                slotToUpload,
+                              );
+                              if (issueIndices.isNotEmpty) {
+                                _showMultiIssueDialog(
+                                  slot: slotToUpload,
+                                  issueIndices: issueIndices,
+                                );
+                                return;
+                              }
+
                               // Upload specific slot
                               // Show loading dialog
                               showDialog(
@@ -1270,12 +1565,98 @@ class _UploadPageState extends State<UploadPage> {
                                   // Close loading dialog on failure
                                   if (mounted) {
                                     Navigator.of(this.context).pop();
+                                    final errorMsg =
+                                        result['error']?.toString() ??
+                                        'Please check your connection and try again.';
+
+                                    // If image issue, show popup dialog with Re-capture button
+                                    if (errorMsg.toLowerCase().contains(
+                                          'missing',
+                                        ) ||
+                                        errorMsg.toLowerCase().contains(
+                                          '0-byte',
+                                        ) ||
+                                        errorMsg.toLowerCase().contains(
+                                          'recapture',
+                                        ) ||
+                                        errorMsg.toLowerCase().contains(
+                                          'corrupt',
+                                        ) ||
+                                        errorMsg.toLowerCase().contains(
+                                          'image',
+                                        ) ||
+                                        errorMsg.toLowerCase().contains(
+                                          'page',
+                                        )) {
+                                      final issueIndices =
+                                          _findIssueImageIndices(
+                                            _selectedSlot ?? '',
+                                          );
+                                      _showMultiIssueDialog(
+                                        slot: _selectedSlot ?? 'this question',
+                                        issueIndices: issueIndices.isNotEmpty
+                                            ? issueIndices
+                                            : [0],
+                                        customError: errorMsg,
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(
+                                        this.context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Upload failed: $errorMsg",
+                                          ),
+                                          backgroundColor: Colors.red,
+                                          behavior: SnackBarBehavior.floating,
+                                          margin: const EdgeInsets.all(16),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              } catch (e) {
+                                // Close loading dialog if still open
+                                if (mounted) {
+                                  Navigator.of(this.context).pop();
+                                  final errorMsg = e.toString().replaceFirst(
+                                    RegExp(r'^Exception:\s*'),
+                                    '',
+                                  );
+
+                                  if (errorMsg.toLowerCase().contains(
+                                        'missing',
+                                      ) ||
+                                      errorMsg.toLowerCase().contains(
+                                        '0-byte',
+                                      ) ||
+                                      errorMsg.toLowerCase().contains(
+                                        'recapture',
+                                      ) ||
+                                      errorMsg.toLowerCase().contains(
+                                        'corrupt',
+                                      ) ||
+                                      errorMsg.toLowerCase().contains(
+                                        'image',
+                                      ) ||
+                                      errorMsg.toLowerCase().contains('page')) {
+                                    final issueIndices = _findIssueImageIndices(
+                                      _selectedSlot ?? '',
+                                    );
+                                    _showMultiIssueDialog(
+                                      slot: _selectedSlot ?? 'this question',
+                                      issueIndices: issueIndices.isNotEmpty
+                                          ? issueIndices
+                                          : [0],
+                                      customError: errorMsg,
+                                    );
+                                  } else {
                                     ScaffoldMessenger.of(
                                       this.context,
                                     ).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                          "Upload failed: ${result['error'] ?? 'Please check your connection and try again.'}",
+                                          "Upload failed: $errorMsg",
                                         ),
                                         backgroundColor: Colors.red,
                                         behavior: SnackBarBehavior.floating,
@@ -1283,23 +1664,6 @@ class _UploadPageState extends State<UploadPage> {
                                       ),
                                     );
                                   }
-                                }
-                              } catch (e) {
-                                // Close loading dialog if still open
-                                if (mounted) {
-                                  Navigator.of(this.context).pop();
-                                  ScaffoldMessenger.of(
-                                    this.context,
-                                  ).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Upload failed. Please check your connection and try again.",
-                                      ),
-                                      backgroundColor: Colors.red,
-                                      behavior: SnackBarBehavior.floating,
-                                      margin: EdgeInsets.all(16),
-                                    ),
-                                  );
                                 }
                               }
                             },
@@ -1314,7 +1678,7 @@ class _UploadPageState extends State<UploadPage> {
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Color.fromARGB(255, 68, 76, 231),
                         foregroundColor: Colors.white,
                         disabledBackgroundColor: Colors.grey.shade200,
                         disabledForegroundColor: Colors.grey.shade500,
@@ -1326,207 +1690,6 @@ class _UploadPageState extends State<UploadPage> {
                       ),
                     ),
                   ),
-
-                  if (_showImagesPreview &&
-                      _selectedSlot != null &&
-                      (_capturedImagesPerSlot[_selectedSlot!]?.isNotEmpty ??
-                          false)) ...[
-                    SizedBox(height: 24),
-                    Divider(),
-                    SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        "Captured Images for $_selectedSlot",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                          ),
-                      itemCount: _capturedImagesPerSlot[_selectedSlot!]!.length,
-                      itemBuilder: (context, index) {
-                        final imagePath =
-                            _capturedImagesPerSlot[_selectedSlot!]![index];
-                        return Stack(
-                          children: [
-                            Positioned.fill(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    _showFullScreenImage(context, imagePath),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    File(imagePath),
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: GestureDetector(
-                                onTap: () {
-                                  _deleteImage(_selectedSlot!, index);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 1),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.delete,
-                                    size: 14,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 4,
-                              left: 4,
-                              child: GestureDetector(
-                                onTap: () async {
-                                  final croppedResult = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ImageCropperPage(
-                                        image: XFile(imagePath),
-                                      ),
-                                    ),
-                                  );
-
-                                  if (croppedResult != null &&
-                                      croppedResult is XFile) {
-                                    setState(() {
-                                      _capturedImagesPerSlot[_selectedSlot!]![index] =
-                                          croppedResult.path;
-                                    });
-                                    _saveCapturedImages();
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 1),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.crop,
-                                    size: 14,
-                                    color: Color(0xFF444CE7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 4,
-                              left: 32,
-                              child: GestureDetector(
-                                onTap: () =>
-                                    _showFullScreenImage(context, imagePath),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 1),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.visibility,
-                                    size: 14,
-                                    color: Color(0xFF444CE7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          // Open capture flow with existing images
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AnswerSheetCaptureFlow(
-                                studentId: widget.studentId,
-                                studentName: widget.studentName,
-                                centreName: widget.centreName,
-                                courseCode: widget.courseCode,
-                                existingImages:
-                                    _capturedImagesPerSlot[_selectedSlot!],
-                              ),
-                            ),
-                          );
-
-                          if (result != null && result is List) {
-                            setState(() {
-                              _capturedImagesPerSlot[_selectedSlot!] =
-                                  List<String>.from(result);
-                            });
-                            // Save to SharedPreferences
-                            _saveCapturedImages();
-                          }
-                        },
-                        icon: Icon(Icons.add_a_photo, size: 18),
-                        label: Text(
-                          "Add more",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

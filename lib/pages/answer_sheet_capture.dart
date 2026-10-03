@@ -32,6 +32,11 @@ class AnswerSheetCaptureFlow extends StatefulWidget {
 }
 
 class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
+  bool get _isSinglePage =>
+      widget.singlePageOnly ||
+      (widget.slotName != null &&
+          widget.slotName!.toLowerCase().replaceAll(' ', '').contains('front'));
+
   @override
   void initState() {
     super.initState();
@@ -52,13 +57,13 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
               studentName: widget.studentName,
               centreName: widget.centreName,
               courseCode: widget.courseCode,
-              singlePageOnly: widget.singlePageOnly,
+              singlePageOnly: _isSinglePage,
             ),
           ),
         );
 
         if (mounted) {
-          Navigator.pop(context, result);
+          Navigator.pop(context, result ?? widget.existingImages);
         }
       } else {
         // Open camera directly without showing any popup dialog
@@ -104,6 +109,11 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
         );
 
         if (croppedResult != null && croppedResult is XFile) {
+          // Delete original raw camera file since it was cropped
+          try {
+            final rawFile = File(result);
+            if (rawFile.existsSync()) rawFile.deleteSync();
+          } catch (_) {}
           _showAcceptRejectDialog(croppedResult.path);
         } else {
           // If crop is cancelled, show dialog with original image
@@ -193,6 +203,10 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
 
                           if (croppedResult != null && croppedResult is XFile) {
                             if (!dialogContext.mounted) return;
+                            try {
+                              final prevF = File(imagePath);
+                              if (prevF.existsSync()) prevF.deleteSync();
+                            } catch (_) {}
                             Navigator.of(
                               dialogContext,
                             ).pop(); // Close current dialog
@@ -232,7 +246,7 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
                         onPressed: () async {
                           Navigator.of(dialogContext).pop(); // Close dialog
 
-                          if (widget.singlePageOnly) {
+                          if (_isSinglePage) {
                             // Immediately return single image (e.g. Front Page) without asking Add More
                             if (mounted) {
                               Navigator.of(widgetContext).pop([imagePath]);
@@ -277,16 +291,20 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
                                     studentName: widget.studentName,
                                     centreName: widget.centreName,
                                     courseCode: widget.courseCode,
-                                    singlePageOnly: widget.singlePageOnly,
+                                    singlePageOnly: _isSinglePage,
                                   ),
                             ),
                           );
 
                           debugPrint(' Image Selection returned: $result');
-                          debugPrint(' Result length: ${result?.length ?? 'null'}');
+                          debugPrint(
+                            ' Result length: ${result?.length ?? 'null'}',
+                          );
 
                           // Return the result to UploadPage using the widget's context
-                          if (result != null && mounted && widgetContext.mounted) {
+                          if (result != null &&
+                              mounted &&
+                              widgetContext.mounted) {
                             debugPrint(
                               ' Popping AnswerSheetCaptureFlow with ${result.length} images',
                             );
@@ -320,12 +338,28 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        return true;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (mounted) {
+          Navigator.of(context).pop(widget.existingImages);
+        }
       },
       child: Scaffold(
         backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () {
+              if (mounted) {
+                Navigator.of(context).pop(widget.existingImages);
+              }
+            },
+          ),
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -348,9 +382,15 @@ class _AnswerSheetCaptureFlowState extends State<AnswerSheetCaptureFlow> {
 // Camera Screen for Answer Sheets
 class AnswerSheetCameraScreen extends StatefulWidget {
   final CameraDescription camera;
+  final String? title;
+  final String? subtitle;
 
-  const AnswerSheetCameraScreen({Key? key, required this.camera})
-    : super(key: key);
+  const AnswerSheetCameraScreen({
+    Key? key,
+    required this.camera,
+    this.title,
+    this.subtitle,
+  }) : super(key: key);
 
   @override
   State<AnswerSheetCameraScreen> createState() =>
@@ -381,19 +421,37 @@ class _AnswerSheetCameraScreenState extends State<AnswerSheetCameraScreen> {
   Future<void> _takePicture() async {
     try {
       await _initializeControllerFuture;
-      final directory = await getTemporaryDirectory();
+      final appDir = await getApplicationDocumentsDirectory();
+      final answersDir = Directory(path.join(appDir.path, 'answer_sheets'));
+      if (!await answersDir.exists()) {
+        await answersDir.create(recursive: true);
+      }
       final imagePath = path.join(
-        directory.path,
+        answersDir.path,
         '${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
 
       final image = await _controller.takePicture();
-      await File(image.path).copy(imagePath);
+      final savedFile = await File(image.path).copy(imagePath);
+
+      if (!await savedFile.exists() || await savedFile.length() == 0) {
+        throw Exception(
+          'Captured image file could not be saved or is 0 bytes.',
+        );
+      }
 
       if (!mounted) return;
       Navigator.pop(context, imagePath);
     } catch (e) {
       debugPrint('Error taking picture: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving photo: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
     }
   }
 
@@ -416,6 +474,70 @@ class _AnswerSheetCameraScreenState extends State<AnswerSheetCameraScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),
+                if (widget.title != null)
+                  Positioned(
+                    top: 40,
+                    left: 65,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.amber.shade400,
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.camera_alt,
+                            color: Colors.amber.shade400,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.title!,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                if (widget.subtitle != null) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    widget.subtitle!,
+                                    style: TextStyle(
+                                      color: Colors.amber.shade200,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 Positioned(
                   bottom: 40,
                   left: 0,
@@ -550,6 +672,10 @@ class _AnswerSheetImageSelectionPageState
 
                           if (croppedResult != null && croppedResult is XFile) {
                             if (!dialogContext.mounted) return;
+                            try {
+                              final prevF = File(imagePath);
+                              if (prevF.existsSync()) prevF.deleteSync();
+                            } catch (_) {}
                             Navigator.of(
                               dialogContext,
                             ).pop(); // Close current dialog
@@ -643,6 +769,11 @@ class _AnswerSheetImageSelectionPageState
       );
 
       if (croppedResult != null && croppedResult is XFile) {
+        // Delete original raw camera file since it was cropped
+        try {
+          final rawFile = File(result);
+          if (rawFile.existsSync()) rawFile.deleteSync();
+        } catch (_) {}
         _showAcceptRejectDialog(croppedResult.path);
       } else {
         // If crop is cancelled, show dialog with original image
@@ -706,247 +837,283 @@ class _AnswerSheetImageSelectionPageState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (mounted) {
+          Navigator.of(context).pop(images);
+        }
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () => Navigator.of(context).pop(images),
+          ),
+          title: Text("Select Images", style: TextStyle(color: Colors.black)),
+          actions: [
+            if (selectedIndices.isNotEmpty)
+              IconButton(
+                icon: Icon(Icons.delete, color: Colors.red),
+                onPressed: _deleteSelected,
+              ),
+          ],
         ),
-        title: Text("Select Images", style: TextStyle(color: Colors.black)),
-        actions: [
-          if (selectedIndices.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete, color: Colors.red),
-              onPressed: _deleteSelected,
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: images.isEmpty
-                ? Center(child: Text("No images captured"))
-                : GridView.builder(
-                    padding: EdgeInsets.all(16),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    itemCount: images.length,
-                    itemBuilder: (context, index) {
-                      final isSelected = selectedIndices.contains(index);
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (isSelected) {
-                              selectedIndices.remove(index);
-                            } else {
-                              selectedIndices.add(index);
-                            }
-                          });
-                        },
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? Colors.blue
-                                      : Colors.grey.shade300,
-                                  width: isSelected ? 3 : 1,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.file(
-                                  File(images[index]),
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 8,
-                              left: 8,
-                              child: GestureDetector(
-                                onTap: () async {
-                                  final croppedResult = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ImageCropperPage(
-                                        image: XFile(images[index]),
-                                      ),
-                                    ),
-                                  );
-
-                                  if (croppedResult != null &&
-                                      croppedResult is XFile) {
-                                    setState(() {
-                                      images[index] = croppedResult.path;
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.crop,
-                                    size: 18,
-                                    color: Color(0xFF444CE7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 8,
-                              left: 48,
-                              child: GestureDetector(
-                                onTap: () => _showFullScreenImage(
-                                  context,
-                                  images[index],
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.visibility,
-                                    size: 18,
-                                    color: Color(0xFF444CE7),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                width: 24,
-                                height: 24,
+        body: Column(
+          children: [
+            Expanded(
+              child: images.isEmpty
+                  ? Center(child: Text("No images captured"))
+                  : GridView.builder(
+                      padding: EdgeInsets.all(16),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                      itemCount: images.length,
+                      itemBuilder: (context, index) {
+                        final isSelected = selectedIndices.contains(index);
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (isSelected) {
+                                selectedIndices.remove(index);
+                              } else {
+                                selectedIndices.add(index);
+                              }
+                            });
+                          },
+                          child: Stack(
+                            children: [
+                              Container(
                                 decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isSelected
-                                      ? Colors.blue
-                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: isSelected
                                         ? Colors.blue
-                                        : Colors.grey.shade400,
-                                    width: 2,
+                                        : Colors.grey.shade300,
+                                    width: isSelected ? 3 : 1,
                                   ),
                                 ),
-                                child: isSelected
-                                    ? Icon(
-                                        Icons.check,
-                                        size: 16,
-                                        color: Colors.white,
-                                      )
-                                    : null,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.file(
+                                    File(images[index]),
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, -5),
-                ),
-              ],
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    final croppedResult = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => ImageCropperPage(
+                                          image: XFile(images[index]),
+                                        ),
+                                      ),
+                                    );
+
+                                    if (croppedResult != null &&
+                                        croppedResult is XFile) {
+                                      try {
+                                        final oldFile = File(images[index]);
+                                        if (oldFile.existsSync())
+                                          oldFile.deleteSync();
+                                      } catch (_) {}
+                                      setState(() {
+                                        images[index] = croppedResult.path;
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.crop,
+                                      size: 18,
+                                      color: Color(0xFF444CE7),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 8,
+                                left: 48,
+                                child: GestureDetector(
+                                  onTap: () => _showFullScreenImage(
+                                    context,
+                                    images[index],
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.visibility,
+                                      size: 18,
+                                      color: Color(0xFF444CE7),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.65),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    "Page ${index + 1}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isSelected
+                                        ? Colors.blue
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? Colors.blue
+                                          : Colors.grey.shade400,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: isSelected
+                                      ? Icon(
+                                          Icons.check,
+                                          size: 16,
+                                          color: Colors.white,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Add More Button (hidden if singlePageOnly is true)
-                if (!widget.singlePageOnly) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _addMoreImages,
-                      icon: Icon(Icons.add_a_photo, size: 18),
-                      label: Text(
-                        "Add More",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+            Container(
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Add More Button (hidden if singlePageOnly is true)
+                  if (!widget.singlePageOnly) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _addMoreImages,
+                        icon: Icon(Icons.add_a_photo, size: 18),
+                        label: Text(
+                          "Add More",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
                         ),
                       ),
+                    ),
+                    SizedBox(height: 12),
+                  ],
+
+                  // Done Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _done,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Color(0xFF4CAF50),
                         padding: EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         elevation: 0,
                       ),
+                      child: Text(
+                        "Done",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
-                  SizedBox(height: 12),
                 ],
-
-                // Done Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _done,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF4CAF50),
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      "Done",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+        bottomNavigationBar: const AppFooter(),
       ),
-      bottomNavigationBar: const AppFooter(),
     );
   }
 }

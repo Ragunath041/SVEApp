@@ -172,75 +172,76 @@ class AnswerSheetUploadService {
           // 2. Add Image Pages with Header Banner (matching Exam App design)
           int addedImagesCount = 0;
           for (int i = 0; i < imagePaths.length; i++) {
-            final imageFile = File(imagePaths[i]);
-            if (await imageFile.exists() && await imageFile.length() > 0) {
-              final imageBytes = await imageFile.readAsBytes();
-              if (imageBytes.isEmpty) {
-                debugPrint(
-                  '⚠️ [PDF] Read 0 bytes from image: ${imagePaths[i]}',
-                );
-                continue;
-              }
+            final imgPath = imagePaths[i];
+            final imageFile = File(imgPath);
 
-              final compressedBytes = await _compressImageForPDF(imageBytes);
-              final bytesToUse = compressedBytes.isNotEmpty
-                  ? compressedBytes
-                  : imageBytes;
-              final image = pw.MemoryImage(bytesToUse);
-
-              pdf.addPage(
-                pw.Page(
-                  pageFormat: PdfPageFormat.a4,
-                  margin: const pw.EdgeInsets.all(20),
-                  build: (pw.Context context) {
-                    return pw.Column(
-                      children: [
-                        // Header banner
-                        pw.Container(
-                          width: double.infinity,
-                          padding: const pw.EdgeInsets.all(12),
-                          decoration: pw.BoxDecoration(
-                            color: PdfColors.blue50,
-                            border: pw.Border(
-                              bottom: pw.BorderSide(
-                                color: PdfColors.blue200,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          child: pw.Text(
-                            '$questionTitle - Page ${i + 1} of ${imagePaths.length}',
-                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                          ),
-                        ),
-                        pw.SizedBox(height: 10),
-                        // Image
-                        pw.Expanded(
-                          child: pw.Image(image, fit: pw.BoxFit.contain),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              );
-              addedImagesCount++;
-            } else {
-              debugPrint(
-                '⚠️ [PDF] Image file does not exist on disk or is 0 bytes: ${imagePaths[i]}',
+            if (!await imageFile.exists() || await imageFile.length() < 1024) {
+              throw Exception(
+                'Page ${i + 1} of $questionTitle is missing or in Bytes. Can you please capture it again....',
               );
             }
+
+            final imageBytes = await imageFile.readAsBytes();
+            if (imageBytes.length < 1024) {
+              throw Exception(
+                'Page ${i + 1} of $questionTitle is corrupted in Bytes. Please recapture this page.',
+              );
+            }
+
+            final compressedBytes = await _compressImageForPDF(imageBytes);
+            final bytesToUse = compressedBytes.isNotEmpty
+                ? compressedBytes
+                : imageBytes;
+            final image = pw.MemoryImage(bytesToUse);
+
+            pdf.addPage(
+              pw.Page(
+                pageFormat: PdfPageFormat.a4,
+                margin: const pw.EdgeInsets.all(20),
+                build: (pw.Context context) {
+                  return pw.Column(
+                    children: [
+                      // Header banner
+                      pw.Container(
+                        width: double.infinity,
+                        padding: const pw.EdgeInsets.all(12),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColors.blue50,
+                          border: pw.Border(
+                            bottom: pw.BorderSide(
+                              color: PdfColors.blue200,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: pw.Text(
+                          '$questionTitle - Page ${i + 1} of ${imagePaths.length}',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
+                      ),
+                      pw.SizedBox(height: 10),
+                      // Image
+                      pw.Expanded(
+                        child: pw.Image(image, fit: pw.BoxFit.contain),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+            addedImagesCount++;
           }
 
-          if (addedImagesCount == 0 && imagePaths.isNotEmpty) {
+          if (addedImagesCount != imagePaths.length) {
             throw Exception(
-              'All ${imagePaths.length} expected images were missing or empty on disk for $slot!',
+              'Page count mismatch for $questionTitle: Expected ${imagePaths.length} pages, but only $addedImagesCount were processed. Upload aborted for exam data integrity.',
             );
           }
 
           final pdfBytes = await pdf.save();
-          if (pdfBytes.isEmpty) {
+          if (pdfBytes.isEmpty || pdfBytes.length < 500) {
             throw Exception(
-              'Generated PDF buffer is empty (0 bytes) for $slot',
+              'Generated PDF buffer is empty or corrupted (< 500 bytes) for $slot',
             );
           }
           debugPrint(
@@ -274,15 +275,20 @@ class AnswerSheetUploadService {
           successCount++;
         } catch (e) {
           debugPrint(' [AnswerSheetUpload] Error uploading slot $slot: $e');
-          errors.add("Slot $slot: $e");
+          final errorMsg = e.toString().replaceFirst(
+            RegExp(r'^Exception:\s*'),
+            '',
+          );
+          errors.add(errorMsg);
         }
       }
 
-      if (successCount == 0 && capturedImages.isNotEmpty) {
+      if (errors.isNotEmpty) {
         return {
           'success': false,
-          'error':
-              'Failed to upload answer sheets. Please check your internet connection and try again.',
+          'error': errors.join('\n'),
+          'errors': errors,
+          'count': successCount,
         };
       }
 
@@ -290,7 +296,6 @@ class AnswerSheetUploadService {
         'success': true,
         'count': successCount,
         'message': 'Successfully uploaded $successCount answer sheets.',
-        'errors': errors,
       };
     } catch (e) {
       debugPrint(' [AnswerSheetUpload] Unexpected error: $e');

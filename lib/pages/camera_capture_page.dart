@@ -306,19 +306,35 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _takePicture() async {
     try {
       await _initializeControllerFuture;
-      final directory = await getTemporaryDirectory();
+      final appDir = await getApplicationDocumentsDirectory();
+      final incidentDir = Directory(path.join(appDir.path, 'incidents'));
+      if (!await incidentDir.exists()) {
+        await incidentDir.create(recursive: true);
+      }
       final imagePath = path.join(
-        directory.path,
+        incidentDir.path,
         '${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
 
       final image = await _controller.takePicture();
-      await File(image.path).copy(imagePath);
+      final savedFile = await File(image.path).copy(imagePath);
+
+      if (!await savedFile.exists() || await savedFile.length() == 0) {
+        throw Exception('Captured incident photo is empty or missing.');
+      }
 
       if (!mounted) return;
       Navigator.pop(context, imagePath);
     } catch (e) {
       debugPrint('Failed taking picture: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving photo: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
     }
   }
 

@@ -3,12 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:flutter/foundation.dart';
 
 class ImageCropperPage extends StatefulWidget {
   final XFile image;
+  final String? title;
+  final String? subtitle;
 
-  const ImageCropperPage({super.key, required this.image});
+  const ImageCropperPage({
+    super.key,
+    required this.image,
+    this.title,
+    this.subtitle,
+  });
 
   @override
   State<ImageCropperPage> createState() => _ImageCropperPageState();
@@ -76,6 +84,13 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
     try {
       final bytes = await File(widget.image.path).readAsBytes();
 
+      // Ensure persistent answer_sheets folder exists
+      final appDir = await getApplicationDocumentsDirectory();
+      final answersDir = Directory(path.join(appDir.path, 'answer_sheets'));
+      if (!await answersDir.exists()) {
+        await answersDir.create(recursive: true);
+      }
+
       // Move intensive processing to compute isolate
       final String? outPath = await compute(_processImageIsolate, {
         'bytes': bytes,
@@ -85,7 +100,7 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
         'br': br,
         'displayWidth': _imageDisplaySize.width,
         'displayHeight': _imageDisplaySize.height,
-        'tempDir': (await getTemporaryDirectory()).path,
+        'targetDir': answersDir.path,
       });
 
       if (outPath != null && mounted) {
@@ -113,9 +128,30 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text(
-          'Crop Document',
-          style: TextStyle(color: Colors.white),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.title ?? 'Crop Document',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (widget.subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                widget.subtitle!,
+                style: TextStyle(
+                  color: Colors.amber.shade300,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
         ),
         leading: IconButton(
           icon: const Icon(Icons.close, color: Colors.white),
@@ -298,7 +334,11 @@ Future<String?> _processImageIsolate(Map<String, dynamic> params) async {
     final Offset br = params['br'];
     final double displayWidth = params['displayWidth'];
     final double displayHeight = params['displayHeight'];
-    final String tempDir = params['tempDir'];
+    final String targetDir = params['targetDir'] ?? params['tempDir'] ?? '';
+    final dir = Directory(targetDir);
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
 
     final src = img.decodeImage(bytes);
     if (src == null) return null;
@@ -311,7 +351,7 @@ Future<String?> _processImageIsolate(Map<String, dynamic> params) async {
     final pBL = img.Point(bl.dx * scaleX, bl.dy * scaleY);
     final pBR = img.Point(br.dx * scaleX, br.dy * scaleY);
 
-    //  Optimized Resolution: 150 DPI is standard for clear document scanning
+    // Optimized Resolution: 150 DPI standard for clear document scanning
     const destWidth = 1240;
     const destHeight = 1754;
 
@@ -326,10 +366,15 @@ Future<String?> _processImageIsolate(Map<String, dynamic> params) async {
     );
 
     final outPath =
-        '$tempDir/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        '$targetDir/cropped_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final jpgBytes = img.encodeJpg(rectified, quality: 85);
     final file = File(outPath);
-    await file.writeAsBytes(jpgBytes);
+    await file.writeAsBytes(jpgBytes, flush: true);
+
+    if (!file.existsSync() || file.lengthSync() == 0) {
+      debugPrint('Isolate error: Cropped output file is missing or 0 bytes.');
+      return null;
+    }
 
     return outPath;
   } catch (e) {
